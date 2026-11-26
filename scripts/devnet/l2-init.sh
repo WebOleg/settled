@@ -28,9 +28,16 @@ if [ "${1:-}" = "--reset" ]; then
   exit 0
 fi
 
-for f in genesis.json rollup.json; do
+for f in genesis.json rollup.json l1-genesis-hash; do
   [ -f "$deployer/$f" ] || { echo "l2-init: no $f; run make l2-deploy first"; exit 1; }
 done
+# The L2 belongs to the L1 it was deployed on. After an L1 reset its chain config and
+# data are meaningless, so refuse to start.
+live="$(curl -sf -m 5 -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"eth_getBlockByNumber","params":["0x0",false]}' \
+  http://127.0.0.1:8545 | jq -r '.result.hash')" || { echo "l2-init: the L1 does not answer; run make l1-up"; exit 1; }
+[ "$(cat "$deployer/l1-genesis-hash")" = "$live" ] \
+  || { echo "l2-init: the L2 was deployed on another L1 (genesis hash differs); run make reset"; exit 1; }
 
 mode() { stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"; }
 want_mode() {

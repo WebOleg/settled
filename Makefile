@@ -1,13 +1,39 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help check check-docs check-shell check-secrets check-go l1-up l1-down l1-reset l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-logs l2-down l2-reset
+.PHONY: help up down status reset check check-docs check-shell check-secrets check-go l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-logs l2-down l2-reset
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
+STEP := $(MAKE) --no-print-directory
 
 help: ## List the targets
 	@awk 'BEGIN { FS = ":.*## " } /^[a-z0-9-]+:.*## / { printf "  %-14s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+
+up: ## Start the whole devnet from any state, in order, and check each part
+	@$(STEP) l1-up
+	@$(STEP) l1-check
+	@$(STEP) l2-keys
+	@$(STEP) l2-fund
+	@$(STEP) l2-deploy
+	@$(STEP) l2-verify
+	@$(STEP) l2-up
+	@$(STEP) l2-check
+	@echo "up: ok"
+
+down: ## Stop the L2, then the L1; keep all data
+	@$(L2) down
+	@$(L1) down
+
+status: ## One look at services, heads and operator balances, without waiting
+	@scripts/devnet/status.sh
+
+reset: ## Stop everything and delete chain data and the deployment; role keys are kept
+	@$(L2) down
+	@$(L1) down
+	@scripts/devnet/l2-init.sh --reset
+	@scripts/devnet/l2-deploy.sh --reset
+	@scripts/devnet/l1-init.sh --reset
 
 check: check-docs check-shell check-secrets check-go ## Run every local check
 
@@ -42,12 +68,9 @@ l1-blob-check: ## Send one blob transaction on the local L1 and wait for its inc
 l1-logs: ## Follow the logs of the local L1
 	@$(L1) logs --follow --tail 50
 
-l1-down: ## Stop the local L1 and keep its data
+l1-down: ## Stop the local L1 and keep its data; stops the L2 first, which uses its network
+	@$(L2) down
 	@$(L1) down
-
-l1-reset: ## Stop the local L1 and delete its data and genesis
-	@$(L1) down
-	@scripts/devnet/l1-init.sh --reset
 
 l2-keys: ## Create the missing L2 operator keys (one per role) and list role addresses
 	@go run ./cmd/l2-keys

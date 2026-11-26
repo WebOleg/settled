@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Deploys the devnet L2 contracts to the local L1 with op-deployer v0.9.0, pinned by
 # digest, then exports genesis.json, rollup.json and the L1 contract addresses into
-# .devnet/l2/deployer. Runs once: a finished deployment is detected and left alone.
+# .devnet/l2/deployer, and records the hash of the L1 genesis block it was deployed on.
+# Runs once: a finished deployment on the running L1 is left alone. A deployment made on
+# an L1 that has since been reset is refused; make reset starts over. With --reset,
+# deletes the deployment.
 #
 # --no-verify: there is no block explorer on the devnet to publish contract sources to;
 # without it op-deployer logs a successful deployment with error lines.
@@ -19,18 +22,47 @@ L2_CHAIN_ID=420420
 keys=".devnet/l2/keys"
 work=".devnet/l2/deployer"
 
+remove_work() {
+  case "$PWD/$work" in
+    */.devnet/l2/deployer) rm -rf "$work" ;;
+    *) echo "l2-deploy: refusing to delete $work"; exit 1 ;;
+  esac
+}
+
+if [ "${1:-}" = "--reset" ]; then
+  remove_work
+  echo "l2-deploy: removed $work (role keys kept)"
+  exit 0
+fi
+
+l1_call() {
+  curl -sf -m 5 -H 'Content-Type: application/json' \
+    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"$1\",\"params\":$2}" http://127.0.0.1:8545 | jq -r '.result'
+}
+l1_genesis_hash() { l1_call eth_getBlockByNumber '["0x0", false]' | jq -r '.hash'; }
+
 if [ -f "$work/state.json" ] && jq -e '(.opChainDeployments // []) | length > 0' "$work/state.json" >/dev/null 2>&1; then
-  echo "l2-deploy: already deployed (see $work/state.json), nothing to do"
+  live="$(l1_genesis_hash)" || { echo "l2-deploy: the L1 does not answer on 127.0.0.1:8545"; exit 1; }
+  if [ ! -f "$work/l1-genesis-hash" ]; then
+    # A deployment made before the hash was recorded: accept it only if its SystemConfig
+    # has code on the running L1, then record the hash.
+    sc="$(jq -r '.SystemConfigProxy' "$work/l1-addresses.json")"
+    code="$(l1_call eth_getCode "[\"$sc\", \"latest\"]" || true)"
+    [ -n "$code" ] && [ "$code" != "0x" ] && [ "$code" != "null" ] \
+      || { echo "l2-deploy: the deployment's SystemConfig $sc has no code on this L1; run make reset"; exit 1; }
+    printf '%s\n' "$live" > "$work/l1-genesis-hash"
+    echo "l2-deploy: recorded the L1 genesis hash of the existing deployment"
+  fi
+  [ "$(cat "$work/l1-genesis-hash")" = "$live" ] \
+    || { echo "l2-deploy: the deployment was made on another L1 (genesis hash differs); run make reset"; exit 1; }
+  echo "l2-deploy: already deployed on this L1 (see $work/state.json), nothing to do"
   exit 0
 fi
 [ -f "$keys/addresses.json" ] || { echo "l2-deploy: no role keys; run make l2-keys and make l2-fund first"; exit 1; }
 docker network inspect "$L1_NET" >/dev/null 2>&1 || { echo "l2-deploy: the L1 is not running; run make l1-up"; exit 1; }
 
 # A partial deployment directory is never reused.
-case "$PWD/$work" in
-  */.devnet/l2/deployer) rm -rf "$work" ;;
-  *) echo "l2-deploy: refusing to delete $work"; exit 1 ;;
-esac
+remove_work
 mkdir -p "$work"
 chmod 700 "$work"
 
@@ -74,4 +106,5 @@ for what in genesis rollup l1; do
   fi
 done
 mv "$work/l1.json" "$work/l1-addresses.json"
-echo "l2-deploy: wrote genesis.json, rollup.json, l1-addresses.json to $work"
+l1_genesis_hash > "$work/l1-genesis-hash"
+echo "l2-deploy: wrote genesis.json, rollup.json, l1-addresses.json, l1-genesis-hash to $work"

@@ -52,6 +52,7 @@ the L1 network to reach `geth` and `beacon`. op-batcher publishes no port.
 | Path | Content |
 |---|---|
 | `.devnet/l2/deployer/genesis.json`, `rollup.json` | Chain config from `make l2-deploy`, mounted read-only |
+| `.devnet/l2/deployer/l1-genesis-hash` | Genesis hash of the L1 the deployment was made on; `l2-init.sh` refuses any other L1 |
 | `.devnet/l2/sequencer/l1-chain-config.json` | The `config` object of the L1 genesis, written by `l2-init.sh`, mounted read-only into both op-nodes |
 | `.devnet/l2/sequencer/jwt.hex`, `.devnet/l2/verifier/jwt.hex` | Engine API secret of each pair, mode 600 |
 | `.devnet/l2/sequencer/p2p.key`, `.devnet/l2/verifier/p2p.key` | Peer-to-peer node key of each op-node, mode 600, mounted read-only |

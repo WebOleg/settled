@@ -85,7 +85,8 @@ difference, so running it again sends nothing to an account that is already fund
 ## L2: contract deployment
 
 `make l2-deploy` deploys the L2 contracts to the local L1 with op-deployer and exports
-`genesis.json`, `rollup.json` and `l1-addresses.json` into `.devnet/l2/deployer`.
+`genesis.json`, `rollup.json` and `l1-addresses.json` into `.devnet/l2/deployer`, with
+the hash of the L1 genesis block in `l1-genesis-hash`.
 
 | Part | Choice | Reason |
 |---|---|---|
@@ -95,6 +96,7 @@ difference, so running it again sends nothing to an account that is already fund
 | Roles | One operator address per role, see the table above | The intent is rendered by [internal/l2intent](../../internal/l2intent), which refuses a missing role, a zero address, or a role given to the deployer |
 | Deployer key | Passed to the container as `-e DEPLOYER_PRIVATE_KEY` with no value | The key never appears on a command line or in the process list |
 | Reruns | A finished deployment in `state.json` is left alone; a partial one is deleted and redone | A rerun never deploys a second set of contracts |
+| Bound to its L1 | The hash of the L1 genesis block is written to `l1-genesis-hash`. `l2-deploy.sh` and `l2-init.sh` refuse to go on when the running L1 has another genesis | After an L1 reset the old contracts no longer exist, and an L2 started from the old chain config would follow an L1 that is not there. The run stops with `run make reset` instead. |
 
 Chain parameters in the intent:
 

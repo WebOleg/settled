@@ -35,6 +35,14 @@ until call "$EL" eth_chainId '[]' >/dev/null 2>&1 && call "$NODE" optimism_syncS
   sleep 5; waited=$((waited + 5))
 done
 
+# After a start or restart op-node answers before it has read the L1 head (it polls the
+# L1 over HTTP), and reports head_l1 and the L1 origin as 0 until then. Measure only
+# once it sees the L1.
+until [ "$(status | jq -r '.head_l1.number')" -gt 0 ] && [ "$(status | jq -r '.unsafe_l2.l1origin.number')" -gt 0 ]; do
+  [ "$waited" -lt 120 ] || fail "op-node has not read the L1 head after 120 s"
+  sleep 2; waited=$((waited + 2))
+done
+
 chain_id="$(call "$EL" eth_chainId '[]' | jq -r '.result')"
 [ "$chain_id" = "$EXPECTED_CHAIN_ID" ] || fail "chain id $chain_id, expected $EXPECTED_CHAIN_ID"
 echo "op-reth          answers, chain id 420420"

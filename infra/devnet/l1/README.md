@@ -13,8 +13,10 @@ genesis, with the same forks active as Ethereum mainnet. Why it is built this wa
 | `make l1-check` | Shows that both layers answer, advance and agree, and prints the finality status |
 | `make l1-blob-check` | Sends one blob transaction and waits until it is included with blob gas used |
 | `make l1-logs` | Follows the logs of all services |
-| `make l1-down` | Stops the network and keeps its data |
-| `make l1-reset` | Stops the network and deletes its data and genesis |
+| `make l1-down` | Stops the L2, which uses this network, then the network; keeps the data |
+
+To delete the L1 data use `make reset`, which also deletes the L2 data and the
+deployment: both belong to this L1 and are useless after it is replaced.
 
 ## Services
 

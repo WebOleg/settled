@@ -14,14 +14,37 @@ Everything runs on one machine and needs no cloud account.
 
 ## Status
 
-Stage 1 is in progress. The local L1 runs. The L2 contracts are deployed on it, the
-L2 sequencer produces blocks and the batcher posts them to the L1 as blobs, so the L2
-safe head follows the L1. A verifier node derives the same chain from the L1 and
+Stage 1 is done. A local proof-of-stake L1 runs, the L2 contracts are deployed on it,
+the L2 sequencer produces blocks and the batcher posts them to the L1 as blobs, so the
+L2 safe head follows the L1. A verifier node derives the same chain from the L1 and
 receives new blocks from the sequencer over peer-to-peer. This file describes only what
 exists and grows with the code.
 
 The rules the code follows are in [ENGINEERING.md](ENGINEERING.md). The plan is in
 [ROADMAP.md](ROADMAP.md).
+
+## Quick start
+
+```sh
+make up
+make status
+make down
+```
+
+`make up` starts everything from any state: a fresh clone, a stopped devnet or a
+running one. In order it starts and checks the L1, creates and funds the operator keys,
+deploys the L2 contracts once, checks them, starts the L2 and checks it, including the
+verifier. Each step is idempotent and stops the run on the first failure. Requires
+Docker, curl, jq, bc, openssl and Go.
+
+`make status` shows the services, the heads of both layers and the operator balances
+without waiting. `make down` stops the L2 and then the L1 and keeps all data.
+`make reset` deletes the chain data of both layers and the deployment; the role keys
+are kept, and the next `make up` builds a new devnet with the same operator
+addresses. The deployment records the L1 it was made on, and the L2 refuses to start
+on any other L1.
+
+The sections below are the parts `make up` runs, for working on one of them.
 
 ## Local L1
 
