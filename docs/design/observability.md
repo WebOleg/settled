@@ -2,8 +2,8 @@
 
 How the devnet is watched and why. This file covers what exists in the repository:
 metrics from every client, collected by Prometheus, a dashboard of the chain in Grafana,
-and alerts with runbooks, sent to Alertmanager. Load tests are the next step of stage 3
-and are described here when they land.
+and alerts with runbooks, sent to Alertmanager. The load test, and what it showed about
+the batcher, is in [load.md](load.md).
 
 ## Goal
 

@@ -140,6 +140,11 @@ services:
       # head moves within a minute on an idle chain. 0, the default, waits for a full
       # channel or the end of the sequencing window.
       - --max-channel-duration=5
+      # Up to 6 blobs in one transaction and up to 4 transactions in flight. With the
+      # defaults (1 and 1) the batcher posts one blob about every 30 s, which the load
+      # test showed falls behind at 200 tx/s.
+      - --target-num-frames=6
+      - --max-pending-tx=4
       - --num-confirmations=4
       - --wait-node-sync
       - --metrics.enabled

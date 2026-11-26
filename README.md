@@ -14,13 +14,15 @@ Everything runs on one machine and needs no cloud account.
 
 ## Status
 
-Stages 1 and 2 are done. A local proof-of-stake L1 runs, the L2 contracts are deployed
+Stages 1 to 3 are done. A local proof-of-stake L1 runs, the L2 contracts are deployed
 on it, the L2 sequencer produces blocks and the batcher posts them to the L1 as blobs,
 so the L2 safe head follows the L1. A verifier node derives the same chain from the L1
 and receives new blocks from the sequencer over peer-to-peer. The proposer posts the L2
 state to the L1, every proposal is recomputed independently, and ETH moves both ways
-with every wei accounted for. This file describes only what
-exists and grows with the code.
+with every wei accounted for. A dashboard answers whether the chain is healthy, every red
+line is an alert with a runbook, a drill shows an alert fire and clear, and a load test
+measures how many transfers a second the chain takes and how long until they are safe.
+This file describes only what exists and grows with the code.
 
 The rules the code follows are in [ENGINEERING.md](ENGINEERING.md). The plan is in
 [ROADMAP.md](ROADMAP.md).
