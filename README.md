@@ -94,7 +94,8 @@ from the L1. Services, endpoints and files are in
 make check
 ```
 
-Requires gitleaks, shellcheck and Go. What each check does is in
+Requires gitleaks, shellcheck and Go. CI runs the same command on every push to `main`
+and every pull request, with the same tool versions. What each check does is in
 [ENGINEERING.md](ENGINEERING.md#local-checks).
 
 ## License

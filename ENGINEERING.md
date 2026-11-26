@@ -55,8 +55,10 @@ exist.
 
 ## Local checks
 
-`make check` runs every check. A commit is pushed only after it passes. `make help`
-lists the targets.
+`make check` runs every check. A commit is pushed only after it passes, and CI runs the
+same `make check` again on every push to `main` and every pull request
+([.github/workflows/check.yml](.github/workflows/check.yml)). `make help` lists the
+targets.
 
 | Target | Tool | Fails on |
 |---|---|---|
@@ -65,7 +67,11 @@ lists the targets.
 | `check-secrets` | gitleaks | a secret anywhere in the git history; findings are printed redacted |
 | `check-go` | gofmt, go vet, go test | an unformatted file, a vet finding or a failing test |
 
-The checks were last run with gitleaks 8.30.1, shellcheck 0.11.0 and Go 1.26.2.
+The checks run with gitleaks 8.30.1, shellcheck 0.11.0 and Go 1.26.2, locally and in
+CI. CI installs shellcheck and gitleaks with
+[scripts/ci/install-tools.sh](scripts/ci/install-tools.sh), which checks each release
+archive against its sha256 first, and pins every GitHub action by commit SHA. A tool is
+upgraded in both places in one commit.
 
 ## Go
 
