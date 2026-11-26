@@ -1,7 +1,7 @@
 {
   "uid": "settled-chain",
   "title": "settled: chain",
-  "description": "The devnet L1 and L2: heads and safety, the verifier, batches, proposals and operator balances.",
+  "description": "Six questions about the devnet on one screen; the details under them, closed until needed.",
   "tags": [
     "settled",
     "devnet"
@@ -9,7 +9,7 @@
   "timezone": "browser",
   "refresh": "10s",
   "schemaVersion": 41,
-  "version": 1,
+  "version": 2,
   "editable": false,
   "time": {
     "from": "now-30m",
@@ -19,7 +19,7 @@
     {
       "type": "row",
       "id": 1,
-      "title": "L2: blocks and safety",
+      "title": "Overview: is the chain healthy?",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -30,209 +30,19 @@
       "panels": []
     },
     {
-      "type": "timeseries",
+      "type": "stat",
       "id": 2,
-      "title": "L2 heads",
-      "description": "Unsafe: built by the sequencer. Safe: derived from batches on the L1. Finalized: its batch is in a finalized L1 block. One line per node and level.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 1
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "op_node_default_refs_number{layer=\"l2\",type=~\"l2_unsafe|l2_safe|l2_finalized\"}",
-          "legendFormat": "{{node}} {{type}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "custom": {
-            "lineWidth": 1,
-            "fillOpacity": 0,
-            "showPoints": "never",
-            "spanNulls": true
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull"
-          ],
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
-      "id": 3,
-      "title": "Blocks behind the unsafe head",
-      "description": "How far safe and finalized trail unsafe, per node. Safe trails by about one batch (30 s, 15 blocks); finalized by L1 finality (about 10 minutes, 300 blocks).",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 1
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "op_node_default_refs_number{layer=\"l2\",type=\"l2_unsafe\"} - ignoring(type) op_node_default_refs_number{layer=\"l2\",type=\"l2_safe\"}",
-          "legendFormat": "{{node}} unsafe - safe",
-          "range": true,
-          "instant": false
-        },
-        {
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "op_node_default_refs_number{layer=\"l2\",type=\"l2_unsafe\"} - ignoring(type) op_node_default_refs_number{layer=\"l2\",type=\"l2_finalized\"}",
-          "legendFormat": "{{node}} unsafe - finalized",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "custom": {
-            "lineWidth": 1,
-            "fillOpacity": 0,
-            "showPoints": "never",
-            "spanNulls": true
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull"
-          ],
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
-    },
-    {
-      "type": "stat",
-      "id": 4,
-      "title": "Verifier behind the sequencer",
-      "description": "Unsafe head of the sequencer minus the verifier's, in blocks. 0 to 1 is normal; a growing value means the verifier stopped following.",
+      "title": "L2 makes blocks",
+      "description": "Green: the sequencer makes about 30 blocks a minute (one every 2 s). Red: fewer than 25. If red, open Details: L2.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
         "h": 5,
-        "w": 6,
+        "w": 4,
         "x": 0,
-        "y": 9
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "max(op_node_default_refs_number{layer=\"l2\",type=\"l2_unsafe\",node=\"sequencer\"}) - max(op_node_default_refs_number{layer=\"l2\",type=\"l2_unsafe\",node=\"verifier\"})",
-          "legendFormat": "blocks",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 5
-              },
-              {
-                "color": "red",
-                "value": 30
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "value_and_name",
-        "justifyMode": "auto",
-        "orientation": "auto"
-      }
-    },
-    {
-      "type": "stat",
-      "id": 5,
-      "title": "L2 block rate",
-      "description": "New unsafe blocks per minute on the sequencer. The block time is 2 s, so 30.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 6,
-        "y": 9
+        "y": 1
       },
       "targets": [
         {
@@ -249,7 +59,8 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "decimals": 1,
+          "unit": "none",
+          "decimals": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -258,12 +69,8 @@
                 "value": null
               },
               {
-                "color": "orange",
-                "value": 25
-              },
-              {
                 "color": "green",
-                "value": 29
+                "value": 25
               }
             ]
           },
@@ -281,27 +88,27 @@
           "fields": "",
           "values": false
         },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "value_and_name",
-        "justifyMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
         "orientation": "auto"
       }
     },
     {
       "type": "stat",
-      "id": 6,
-      "title": "Safe lag",
-      "description": "Unsafe minus safe on the verifier, in seconds of L2 time (2 s per block).",
+      "id": 3,
+      "title": "Batches reach the L1",
+      "description": "Green: the last batch was confirmed on the L1 less than 2 minutes ago; a batch goes out every 30 s. Red: older. If red, open Details: batcher.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
         "h": 5,
-        "w": 6,
-        "x": 12,
-        "y": 9
+        "w": 4,
+        "x": 4,
+        "y": 1
       },
       "targets": [
         {
@@ -310,8 +117,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(max(op_node_default_refs_number{layer=\"l2\",type=\"l2_unsafe\",node=\"verifier\"}) - max(op_node_default_refs_number{layer=\"l2\",type=\"l2_safe\",node=\"verifier\"})) * 2",
-          "legendFormat": "seconds",
+          "expr": "time() - op_batcher_default_txmgr_last_confirm_unix",
+          "legendFormat": "",
           "range": true,
           "instant": false
         }
@@ -319,6 +126,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "s",
+          "decimals": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -327,12 +135,8 @@
                 "value": null
               },
               {
-                "color": "orange",
-                "value": 120
-              },
-              {
                 "color": "red",
-                "value": 600
+                "value": 120
               }
             ]
           },
@@ -350,27 +154,27 @@
           "fields": "",
           "values": false
         },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "value_and_name",
-        "justifyMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
         "orientation": "auto"
       }
     },
     {
       "type": "stat",
-      "id": 7,
-      "title": "Op-node peers",
-      "description": "Peer-to-peer connections of each op-node. Each should have the other one.",
+      "id": 4,
+      "title": "Verifier keeps up",
+      "description": "Green: the verifier is fewer than 5 blocks behind the sequencer. Red: it has fallen behind. If red, open Details: L2.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
         "h": 5,
-        "w": 6,
-        "x": 18,
-        "y": 9
+        "w": 4,
+        "x": 8,
+        "y": 1
       },
       "targets": [
         {
@@ -379,14 +183,214 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "op_node_default_p2p_peer_count",
-          "legendFormat": "{{node}}",
+          "expr": "max(op_node_default_refs_number{layer=\"l2\",type=\"l2_unsafe\",node=\"sequencer\"}) - max(op_node_default_refs_number{layer=\"l2\",type=\"l2_unsafe\",node=\"verifier\"})",
+          "legendFormat": "blocks behind",
           "range": true,
           "instant": false
         }
       ],
       "fieldConfig": {
         "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 5,
+      "title": "Proposals are made",
+      "description": "Green: the proposer posted a state to the L1 less than 15 minutes ago; it does about every 6. Red: older. If red, open Details: proposer and funds.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - op_proposer_default_txmgr_last_confirm_unix",
+          "legendFormat": "",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 900
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 6,
+      "title": "L1 finalizes",
+      "description": "Green: the L1 finalized block is fewer than 160 blocks (5 epochs) behind its head; normally about 64 to 96. Red: finality has stalled. If red, open Details: L1.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(chain_head_block{chain=\"l1\"}) - max(chain_head_finalized{chain=\"l1\"})",
+          "legendFormat": "blocks to finality",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 160
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 7,
+      "title": "Operators have funds",
+      "description": "Green: the batcher and the proposer each hold at least 1 ETH on the L1. Red: one of them is running out; run make l2-fund.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "min(op_batcher_default_balance or op_proposer_default_balance)",
+          "legendFormat": "ETH, lowest",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 2,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -414,721 +418,730 @@
           "fields": "",
           "values": false
         },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "value_and_name",
-        "justifyMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
         "orientation": "auto"
-      }
-    },
-    {
-      "type": "row",
-      "id": 8,
-      "title": "L1",
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 14
-      },
-      "panels": []
-    },
-    {
-      "type": "timeseries",
-      "id": 9,
-      "title": "L1 heads",
-      "description": "geth's head, safe and finalized blocks.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 15
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "chain_head_block{chain=\"l1\"}",
-          "legendFormat": "head",
-          "range": true,
-          "instant": false
-        },
-        {
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "chain_head_safe{chain=\"l1\"}",
-          "legendFormat": "safe",
-          "range": true,
-          "instant": false
-        },
-        {
-          "refId": "C",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "chain_head_finalized{chain=\"l1\"}",
-          "legendFormat": "finalized",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "custom": {
-            "lineWidth": 1,
-            "fillOpacity": 0,
-            "showPoints": "never",
-            "spanNulls": true
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull"
-          ],
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
-    },
-    {
-      "type": "timeseries",
-      "id": 10,
-      "title": "Validator duties",
-      "description": "Blocks and attestations signed by the 64 validators, per minute.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 15
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "rate(vc_signed_beacon_blocks_total[5m]) * 60",
-          "legendFormat": "blocks/min",
-          "range": true,
-          "instant": false
-        },
-        {
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "rate(vc_signed_attestations_total[5m]) * 60",
-          "legendFormat": "attestations/min",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "decimals": 1,
-          "custom": {
-            "lineWidth": 1,
-            "fillOpacity": 0,
-            "showPoints": "never",
-            "spanNulls": true
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull"
-          ],
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
       }
     },
     {
       "type": "row",
       "id": 11,
-      "title": "Batcher",
-      "collapsed": false,
+      "title": "Details: L2",
+      "collapsed": true,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 23
+        "y": 6
       },
-      "panels": []
-    },
-    {
-      "type": "timeseries",
-      "id": 12,
-      "title": "Blocks waiting to be batched",
-      "description": "L2 blocks the batcher holds, by stage. A queue that only grows means batches are not leaving.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 0,
-        "y": 24
-      },
-      "targets": [
+      "panels": [
         {
-          "refId": "A",
+          "type": "timeseries",
+          "id": 8,
+          "title": "L2 heads",
+          "description": "Unsafe: built by the sequencer. Safe: derived from batches on the L1. Finalized: its batch is in a finalized L1 block. One line per node and level.",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "op_batcher_default_pending_blocks_count",
-          "legendFormat": "{{stage}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "custom": {
-            "lineWidth": 1,
-            "fillOpacity": 0,
-            "showPoints": "never",
-            "spanNulls": true
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull"
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 7
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "op_node_default_refs_number{layer=\"l2\",type=~\"l2_unsafe|l2_safe|l2_finalized\"}",
+              "legendFormat": "{{node}} {{type}}",
+              "range": true,
+              "instant": false
+            }
           ],
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
-    },
-    {
-      "type": "stat",
-      "id": 13,
-      "title": "Since the last confirmed batch",
-      "description": "Seconds since the batcher's last L1 transaction was confirmed. A channel closes every 30 s.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 4,
-        "x": 8,
-        "y": 24
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "time() - op_batcher_default_txmgr_last_confirm_unix",
-          "legendFormat": "seconds",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 120
-              },
-              {
-                "color": "red",
-                "value": 300
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "spanNulls": true
               }
-            ]
+            },
+            "overrides": []
           },
-          "color": {
-            "mode": "thresholds"
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
           }
         },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
+        {
+          "type": "timeseries",
+          "id": 9,
+          "title": "Blocks behind the unsafe head",
+          "description": "How far safe and finalized trail unsafe, per node. Safe trails by about one batch (15 blocks); finalized by L1 finality (about 300 blocks).",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 7
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "op_node_default_refs_number{layer=\"l2\",type=\"l2_unsafe\"} - ignoring(type) op_node_default_refs_number{layer=\"l2\",type=\"l2_safe\"}",
+              "legendFormat": "{{node}} unsafe - safe",
+              "range": true,
+              "instant": false
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "op_node_default_refs_number{layer=\"l2\",type=\"l2_unsafe\"} - ignoring(type) op_node_default_refs_number{layer=\"l2\",type=\"l2_finalized\"}",
+              "legendFormat": "{{node}} unsafe - finalized",
+              "range": true,
+              "instant": false
+            }
           ],
-          "fields": "",
-          "values": false
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
         },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "value_and_name",
-        "justifyMode": "auto",
-        "orientation": "auto"
-      }
+        {
+          "type": "timeseries",
+          "id": 10,
+          "title": "Op-node peers",
+          "description": "Peer-to-peer connections of each op-node. Each should have the other one.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 12,
+            "x": 0,
+            "y": 15
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "op_node_default_p2p_peer_count",
+              "legendFormat": "{{node}}",
+              "range": true,
+              "instant": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        }
+      ]
     },
     {
-      "type": "timeseries",
+      "type": "row",
       "id": 14,
-      "title": "Batch transactions and blob fee",
-      "description": "Confirmed batcher transactions per minute, and the L1 blob base fee they paid.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 24
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "rate(op_batcher_default_txmgr_confirm_total[5m]) * 60",
-          "legendFormat": "confirmed/min",
-          "range": true,
-          "instant": false
-        },
-        {
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "op_batcher_default_txmgr_blob_basefee_wei",
-          "legendFormat": "blob base fee (wei)",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "lineWidth": 1,
-            "fillOpacity": 0,
-            "showPoints": "never",
-            "spanNulls": true
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull"
-          ],
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
-    },
-    {
-      "type": "row",
-      "id": 15,
-      "title": "Proposer",
-      "collapsed": false,
+      "title": "Details: L1",
+      "collapsed": true,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 32
+        "y": 7
       },
-      "panels": []
-    },
-    {
-      "type": "stat",
-      "id": 16,
-      "title": "Since the last confirmed proposal",
-      "description": "Seconds since the proposer's last L1 transaction was confirmed. A game is made when the finalized L2 head moves, about every 6 minutes here.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 6,
-        "x": 0,
-        "y": 33
-      },
-      "targets": [
+      "panels": [
         {
-          "refId": "A",
+          "type": "timeseries",
+          "id": 12,
+          "title": "L1 heads",
+          "description": "geth's head, safe and finalized blocks.",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "time() - op_proposer_default_txmgr_last_confirm_unix",
-          "legendFormat": "seconds",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 900
-              },
-              {
-                "color": "red",
-                "value": 1800
-              }
-            ]
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 7
           },
-          "color": {
-            "mode": "thresholds"
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "chain_head_block{chain=\"l1\"}",
+              "legendFormat": "head",
+              "range": true,
+              "instant": false
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "chain_head_safe{chain=\"l1\"}",
+              "legendFormat": "safe",
+              "range": true,
+              "instant": false
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "chain_head_finalized{chain=\"l1\"}",
+              "legendFormat": "finalized",
+              "range": true,
+              "instant": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
           }
         },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
+        {
+          "type": "timeseries",
+          "id": 13,
+          "title": "Validator duties",
+          "description": "Blocks and attestations signed by the 64 validators, per minute.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 7
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "rate(vc_signed_beacon_blocks_total[5m]) * 60",
+              "legendFormat": "blocks/min",
+              "range": true,
+              "instant": false
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "rate(vc_signed_attestations_total[5m]) * 60",
+              "legendFormat": "attestations/min",
+              "range": true,
+              "instant": false
+            }
           ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "value_and_name",
-        "justifyMode": "auto",
-        "orientation": "auto"
-      }
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 1,
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        }
+      ]
     },
     {
-      "type": "stat",
+      "type": "row",
       "id": 17,
-      "title": "Age of the proposed state",
-      "description": "Seconds between now and the L2 time of the last proposed super root.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 6,
-        "x": 6,
-        "y": 33
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "time() - op_proposer_default_proposed_sequence_number",
-          "legendFormat": "seconds",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 1800
-              },
-              {
-                "color": "red",
-                "value": 3600
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "value_and_name",
-        "justifyMode": "auto",
-        "orientation": "auto"
-      }
-    },
-    {
-      "type": "timeseries",
-      "id": 18,
-      "title": "Operator balances on the L1",
-      "description": "ETH left to pay for batches and proposals. Topped up by make l2-fund.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 12,
-        "x": 12,
-        "y": 33
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "op_batcher_default_balance",
-          "legendFormat": "batcher",
-          "range": true,
-          "instant": false
-        },
-        {
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "op_proposer_default_balance",
-          "legendFormat": "proposer",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "decimals": 4,
-          "custom": {
-            "lineWidth": 1,
-            "fillOpacity": 0,
-            "showPoints": "never",
-            "spanNulls": true
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull"
-          ],
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
-    },
-    {
-      "type": "row",
-      "id": 19,
-      "title": "Execution",
-      "collapsed": false,
+      "title": "Details: batcher",
+      "collapsed": true,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 39
+        "y": 8
       },
-      "panels": []
+      "panels": [
+        {
+          "type": "timeseries",
+          "id": 15,
+          "title": "Blocks waiting to be batched",
+          "description": "L2 blocks the batcher holds, by stage. A queue that only grows means batches are not leaving.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 7
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "op_batcher_default_pending_blocks_count",
+              "legendFormat": "{{stage}}",
+              "range": true,
+              "instant": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        },
+        {
+          "type": "timeseries",
+          "id": 16,
+          "title": "Batch transactions and blob fee",
+          "description": "Confirmed batcher transactions per minute, and the L1 blob base fee they paid.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 7
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "rate(op_batcher_default_txmgr_confirm_total[5m]) * 60",
+              "legendFormat": "confirmed/min",
+              "range": true,
+              "instant": false
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "op_batcher_default_txmgr_blob_basefee_wei",
+              "legendFormat": "blob base fee (wei)",
+              "range": true,
+              "instant": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        }
+      ]
     },
     {
-      "type": "timeseries",
+      "type": "row",
       "id": 20,
-      "title": "Gas used per L2 block",
-      "description": "Gas used by the head block of each op-reth.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
+      "title": "Details: proposer and funds",
+      "collapsed": true,
       "gridPos": {
-        "h": 8,
-        "w": 12,
+        "h": 1,
+        "w": 24,
         "x": 0,
-        "y": 40
+        "y": 9
       },
-      "targets": [
+      "panels": [
         {
-          "refId": "A",
+          "type": "timeseries",
+          "id": 18,
+          "title": "Age of the proposed state",
+          "description": "Seconds between now and the L2 time of the last proposed state.",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "reth_chain_head_gas_used",
-          "legendFormat": "{{node}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "custom": {
-            "lineWidth": 1,
-            "fillOpacity": 0,
-            "showPoints": "never",
-            "spanNulls": true
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 7
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "time() - op_proposer_default_proposed_sequence_number",
+              "legendFormat": "seconds",
+              "range": true,
+              "instant": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
           }
         },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull"
+        {
+          "type": "timeseries",
+          "id": 19,
+          "title": "Operator balances on the L1",
+          "description": "ETH left to pay for batches and proposals. Topped up by make l2-fund.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 7
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "op_batcher_default_balance",
+              "legendFormat": "batcher",
+              "range": true,
+              "instant": false
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "op_proposer_default_balance",
+              "legendFormat": "proposer",
+              "range": true,
+              "instant": false
+            }
           ],
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 4,
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
         }
-      }
+      ]
     },
     {
-      "type": "timeseries",
-      "id": 21,
-      "title": "Problems",
-      "description": "Things that should stay at zero: op-node derivation errors and op-reth reorgs over the last 15 minutes.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
+      "type": "row",
+      "id": 23,
+      "title": "Details: execution",
+      "collapsed": true,
       "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 40
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 10
       },
-      "targets": [
+      "panels": [
         {
-          "refId": "A",
+          "type": "timeseries",
+          "id": 21,
+          "title": "Gas used per L2 block",
+          "description": "Gas used by the head block of each op-reth.",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "increase(op_node_default_derivation_errors_total[15m])",
-          "legendFormat": "derivation errors {{node}}",
-          "range": true,
-          "instant": false
-        },
-        {
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 7
           },
-          "expr": "increase(reth_blockchain_tree_reorgs[15m])",
-          "legendFormat": "reorgs {{node}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "custom": {
-            "lineWidth": 1,
-            "fillOpacity": 0,
-            "showPoints": "never",
-            "spanNulls": true
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "reth_chain_head_gas_used",
+              "legendFormat": "{{node}}",
+              "range": true,
+              "instant": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
           }
         },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "lastNotNull"
+        {
+          "type": "timeseries",
+          "id": 22,
+          "title": "Problems",
+          "description": "Things that should stay at zero: op-node derivation errors and op-reth reorgs over the last 15 minutes.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 7
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "increase(op_node_default_derivation_errors_total[15m])",
+              "legendFormat": "derivation errors {{node}}",
+              "range": true,
+              "instant": false
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "increase(reth_blockchain_tree_reorgs[15m])",
+              "legendFormat": "reorgs {{node}}",
+              "range": true,
+              "instant": false
+            }
           ],
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
         }
-      }
+      ]
     }
   ],
   "templating": {

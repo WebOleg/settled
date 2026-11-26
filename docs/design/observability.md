@@ -37,28 +37,40 @@ L1 and L2 networks and scrapes all nine every 5 seconds.
 
 ## Dashboard
 
-Grafana 13.3.2, pinned by digest, at `http://127.0.0.1:3000`. The dashboard
-[settled: chain](../../infra/observability/grafana/dashboards/chain.json) opens as the
-home page.
+Grafana 13.3.2, pinned by digest, at `http://127.0.0.1:3000`; the dashboard
+[settled: chain](../../infra/observability/grafana/dashboards/chain.json) is the home
+page (`http://127.0.0.1:3000/d/settled-chain`).
 
-| Panel | What it shows |
+### How it is laid out
+
+A person on duty takes in a handful of things at a glance, not twenty graphs. The first
+version put sixteen panels on one screen, and it was hard to see where to look. So the
+dashboard follows three rules:
+
+1. One screen answers "is the chain healthy?" with six tiles. Each tile asks one
+   question in plain words, shows one number, and is green or red. There is no third
+   colour to interpret.
+2. Everything else sits below in rows that stay closed until opened. Each tile says
+   which row to open when it is red.
+3. The red line of a tile is the threshold of the alert for the same question (next
+   step of stage 3), so a red tile, an alert and its runbook are one thing.
+
+| Tile | Green when | Red means |
+|---|---|---|
+| L2 makes blocks | The sequencer makes about 30 blocks a minute (one every 2 s). | Fewer than 25. |
+| Batches reach the L1 | The last batch was confirmed on the L1 less than 2 minutes ago; a batch goes out every 30 s. | Older. |
+| Verifier keeps up | The verifier is fewer than 5 blocks behind the sequencer. | It has fallen behind. |
+| Proposals are made | The proposer posted a state to the L1 less than 15 minutes ago; it does about every 6. | Older. |
+| L1 finalizes | The L1 finalized block is fewer than 160 blocks (5 epochs) behind its head; normally about 64 to 96. | Finality has stalled. |
+| Operators have funds | The batcher and the proposer each hold at least 1 ETH on the L1. | One of them is running out. |
+
+| Closed row | Panels |
 |---|---|
-| L2 heads | Unsafe: built by the sequencer. Safe: derived from batches on the L1. Finalized: its batch is in a finalized L1 block. One line per node and level. |
-| Blocks behind the unsafe head | How far safe and finalized trail unsafe, per node. Safe trails by about one batch (30 s, 15 blocks); finalized by L1 finality (about 10 minutes, 300 blocks). |
-| Verifier behind the sequencer | Unsafe head of the sequencer minus the verifier's, in blocks. 0 to 1 is normal; a growing value means the verifier stopped following. |
-| L2 block rate | New unsafe blocks per minute on the sequencer. The block time is 2 s, so 30. |
-| Safe lag | Unsafe minus safe on the verifier, in seconds of L2 time (2 s per block). |
-| Op-node peers | Peer-to-peer connections of each op-node. Each should have the other one. |
-| L1 heads | geth's head, safe and finalized blocks. |
-| Validator duties | Blocks and attestations signed by the 64 validators, per minute. |
-| Blocks waiting to be batched | L2 blocks the batcher holds, by stage. A queue that only grows means batches are not leaving. |
-| Since the last confirmed batch | Seconds since the batcher's last L1 transaction was confirmed. A channel closes every 30 s. |
-| Batch transactions and blob fee | Confirmed batcher transactions per minute, and the L1 blob base fee they paid. |
-| Since the last confirmed proposal | Seconds since the proposer's last L1 transaction was confirmed. A game is made when the finalized L2 head moves, about every 6 minutes here. |
-| Age of the proposed state | Seconds between now and the L2 time of the last proposed super root. |
-| Operator balances on the L1 | ETH left to pay for batches and proposals. Topped up by make l2-fund. |
-| Gas used per L2 block | Gas used by the head block of each op-reth. |
-| Problems | Things that should stay at zero: op-node derivation errors and op-reth reorgs over the last 15 minutes. |
+| Details: L2 | L2 heads, Blocks behind the unsafe head, Op-node peers |
+| Details: L1 | L1 heads, Validator duties |
+| Details: batcher | Blocks waiting to be batched, Batch transactions and blob fee |
+| Details: proposer and funds | Age of the proposed state, Operator balances on the L1 |
+| Details: execution | Gas used per L2 block, Problems |
 
 | Choice | Reason |
 |---|---|
@@ -68,6 +80,8 @@ home page.
 | Update checks, usage reporting, the news feed and Gravatar off | A local tool should not call out. |
 
 `make obs-check` shows that all nine targets are up and each of the seven jobs reports
-series; that Grafana is healthy and the admin password works; that an anonymous visitor
-reads every panel and cannot write; and that every query of every panel returns data
-from Prometheus. An empty panel fails the check, so a renamed metric is noticed at once.
+series; that Grafana is healthy, the admin password works and the home page is this
+dashboard; that an anonymous visitor reads every panel and cannot write; that every query
+of every panel, closed rows included, returns data from Prometheus; and it prints each
+tile with its colour, worked out from the tile's thresholds in the file. An empty panel
+fails the check, so a renamed metric is noticed at once.

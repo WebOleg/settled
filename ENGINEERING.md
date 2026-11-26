@@ -77,6 +77,15 @@ CI. CI installs shellcheck and gitleaks with
 archive against its sha256 first, and pins every GitHub action by commit SHA. A tool is
 upgraded in both places in one commit.
 
+## Operations
+
+- A dashboard opens on one screen of a few questions in plain words, each one number,
+  green or red. Details stay below, closed until needed. A person on duty cannot take in
+  twenty graphs at once, and should not have to.
+- Every red line is the threshold of an alert, and every alert has a runbook. A tile, an
+  alert and its runbook describe one condition.
+- A panel or check that shows nothing fails. Silence is not health.
+
 ## Go
 
 - One module at the repository root, `github.com/WebOleg/settled`. Commands live in

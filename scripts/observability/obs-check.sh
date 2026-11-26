@@ -51,8 +51,9 @@ echo "admin            the password from .devnet/observability works"
 
 uid="$(jq -r '.uid' "$DASHBOARD")"
 dash="$(curl -sf -m 5 "$GRAFANA/api/dashboards/uid/$uid")" || fail "anonymous read of dashboard $uid refused"
-panels="$(printf '%s' "$dash" | jq '[.dashboard.panels[] | select(.type != "row")] | length')"
-want="$(jq '[.panels[] | select(.type != "row")] | length' "$DASHBOARD")"
+# Panels inside collapsed rows are kept in the row; count them too.
+panels="$(printf '%s' "$dash" | jq '[.dashboard.panels[] | if .type == "row" then (.panels // [])[] else . end] | length')"
+want="$(jq '[.panels[] | if .type == "row" then (.panels // [])[] else . end] | length' "$DASHBOARD")"
 [ "$panels" -eq "$want" ] || fail "Grafana shows $panels panels, the file has $want"
 write_status="$(curl -s -m 5 -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
   -d '{"dashboard":{"title":"anonymous write"},"overwrite":false}' "$GRAFANA/api/dashboards/db")"
@@ -67,9 +68,37 @@ while IFS=$'\t' read -r title expr; do
     echo "empty            $title: $expr"
     empty=$((empty + 1))
   fi
-done < <(jq -r '.panels[] | select(.type != "row") | .title as $t | .targets[] | [$t, .expr] | @tsv' "$DASHBOARD")
-queries="$(jq '[.panels[] | select(.type != "row") | .targets[]] | length' "$DASHBOARD")"
+done < <(jq -r '[.panels[] | if .type == "row" then (.panels // [])[] else . end][] | .title as $t | .targets[] | [$t, .expr] | @tsv' "$DASHBOARD")
+queries="$(jq '[[.panels[] | if .type == "row" then (.panels // [])[] else . end][] | .targets[]] | length' "$DASHBOARD")"
 [ "$empty" -eq 0 ] || fail "$empty of $queries panel queries return no data"
 echo "panels           all $queries queries of the $panels panels return data"
+
+# The home page is this dashboard, so whoever opens Grafana sees the six questions first.
+# A home dashboard read from a file is served as a copy under Grafana's own uid
+# (default-home-dashboard), so the page is matched by uid, by title, or by the slug
+# Grafana makes from the title in its redirect ("settled: chain" -> "settled3a-chain").
+title="$(jq -r '.title' "$DASHBOARD")"
+home="$(curl -sf -m 5 "$GRAFANA/api/dashboards/home")" || fail "Grafana does not return its home page"
+printf '%s' "$home" | jq -e --arg uid "$uid" --arg title "$title" '
+  ($title | ascii_downcase | gsub(":"; "3a") | gsub("[^a-z0-9]+"; "-") | gsub("^-|-$"; "")) as $slug
+  | ((.redirectUri // "") | sub("[?].*$"; "") | split("/")) as $path
+  | ($path[1] == "d" and ($path[2] == $uid or $path[3] == $slug))
+    or (.dashboard.uid == $uid) or (.dashboard.title == $title)' >/dev/null \
+  || fail "the Grafana home page is not the $uid dashboard: $(printf '%s' "$home" | jq -c '{redirectUri, uid: .dashboard.uid, title: .dashboard.title}')"
+echo "home             $GRAFANA opens the $uid dashboard; direct link $GRAFANA/d/$uid"
+
+# Overview tiles: each must have a value now. Its colour is worked out from the tile's
+# own thresholds in the dashboard file, the same way Grafana colours it.
+red=0
+tiles=0
+while IFS=$'\t' read -r title expr steps; do
+  tiles=$((tiles + 1))
+  v="$(query "$expr" | jq -r '.data.result[0].value[1] // "none"')"
+  [ "$v" != "none" ] || fail "overview tile '$title' has no value"
+  colour="$(jq -rn --argjson v "$v" --argjson s "$steps" '[$s[] | select(.value == null or .value <= $v)] | last | .color')"
+  printf 'tile             %-22s %-6s %s\n' "$title" "$colour" "$v"
+  [ "$colour" = "green" ] || red=$((red + 1))
+done < <(jq -r '.panels[] | select(.type == "stat") | [.title, .targets[0].expr, (.fieldConfig.defaults.thresholds.steps | tojson)] | @tsv' "$DASHBOARD")
+echo "overview         $((tiles - red)) of $tiles tiles green"
 
 echo "obs-check: ok"
