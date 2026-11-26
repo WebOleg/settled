@@ -39,7 +39,8 @@ with `ethpandaops/ethereum-genesis-generator:6.2.9`, using
 | Execution WebSocket | `ws://127.0.0.1:8546` |
 | Beacon API | `http://127.0.0.1:4000` |
 
-Every port is bound to `127.0.0.1`. The engine API between `geth` and `beacon` stays
+Every port is bound to `127.0.0.1`. Metrics (geth 6060, beacon 5054, validator 5064)
+are served inside the Docker network only, for Prometheus. The engine API between `geth` and `beacon` stays
 inside the Docker network.
 
 ## Files

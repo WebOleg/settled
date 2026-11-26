@@ -169,6 +169,17 @@ from the verifier's execution client. `l2-deposit` moves 1 ETH from the L1 to th
 account for every wei on both sides, and a withdrawal cannot be paid twice. Why they work this way is in
 [docs/design/devnet.md](docs/design/devnet.md#l2-proposer).
 
+## Observability
+
+```sh
+make obs-check
+```
+
+Prometheus scrapes all nine clients of both layers every 5 seconds, at
+`http://127.0.0.1:9090`. What is collected and why is in
+[docs/design/observability.md](docs/design/observability.md); the stack is in
+[infra/observability/README.md](infra/observability/README.md).
+
 ## Checks
 
 ```sh

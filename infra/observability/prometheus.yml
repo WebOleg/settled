@@ -1,0 +1,48 @@
+# Every client of the devnet, scraped every 5 s: the L2 makes a block every 2 s and the
+# L1 a slot every 6 s, so a 15 s default would hide most of what happens. Each target
+# carries the layer it belongs to and its role, which dashboards and alerts group by.
+global:
+  scrape_interval: 5s
+  scrape_timeout: 4s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: geth
+    metrics_path: /debug/metrics/prometheus
+    static_configs:
+      - targets: [geth:6060]
+        labels: {layer: l1, role: execution}
+
+  - job_name: lighthouse-beacon
+    static_configs:
+      - targets: [beacon:5054]
+        labels: {layer: l1, role: consensus}
+
+  - job_name: lighthouse-validator
+    static_configs:
+      - targets: [validator:5064]
+        labels: {layer: l1, role: validator}
+
+  - job_name: op-reth
+    static_configs:
+      - targets: [op-reth:9001]
+        labels: {layer: l2, role: execution, node: sequencer}
+      - targets: [verifier-op-reth:9001]
+        labels: {layer: l2, role: execution, node: verifier}
+
+  - job_name: op-node
+    static_configs:
+      - targets: [op-node:7300]
+        labels: {layer: l2, role: rollup, node: sequencer}
+      - targets: [verifier-op-node:7300]
+        labels: {layer: l2, role: rollup, node: verifier}
+
+  - job_name: op-batcher
+    static_configs:
+      - targets: [op-batcher:7300]
+        labels: {layer: l2, role: batcher}
+
+  - job_name: op-proposer
+    static_configs:
+      - targets: [op-proposer:7300]
+        labels: {layer: l2, role: proposer}

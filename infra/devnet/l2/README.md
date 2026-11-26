@@ -49,7 +49,8 @@ and the deployment (`make l2-deploy`).
 | Verifier execution WebSocket | `ws://127.0.0.1:28546` |
 | Verifier op-node RPC | `http://127.0.0.1:29545` |
 
-Every port is bound to `127.0.0.1`. The engine APIs and the peer-to-peer port 9222 of
+Every port is bound to `127.0.0.1`. Metrics (op-reth 9001, op-node, op-batcher and
+op-proposer 7300) are served inside the Docker network only, for Prometheus. The engine APIs and the peer-to-peer port 9222 of
 both op-nodes stay inside the Docker network. Both op-nodes and op-batcher also join
 the L1 network to reach `geth` and `beacon`, and so does op-proposer. op-batcher and
 op-proposer publish no port.

@@ -58,6 +58,17 @@ for pair in "sequencer:$SEQ_NODE" "verifier:$VER_NODE"; do
 done
 
 echo
+echo "Observability"
+prom="$(curl -sf -m 3 'http://127.0.0.1:9090/api/v1/targets?state=active' 2>/dev/null || true)"
+if [ -n "$prom" ]; then
+  printf '  %-12s %s of %s targets up (http://127.0.0.1:9090)\n' "prometheus" \
+    "$(printf '%s' "$prom" | jq '[.data.activeTargets[] | select(.health == "up")] | length')" \
+    "$(printf '%s' "$prom" | jq '.data.activeTargets | length')"
+else
+  echo "  prometheus   not running (make obs-up)"
+fi
+
+echo
 echo "Dispute games"
 dgf="$(jq -r '.DisputeGameFactoryProxy // empty' .devnet/l2/deployer/l1-addresses.json 2>/dev/null || true)"
 if [ -n "$dgf" ]; then

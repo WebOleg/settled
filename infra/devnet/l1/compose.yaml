@@ -43,6 +43,10 @@ services:
       - --authrpc.port=8551
       - --authrpc.vhosts=*
       - --authrpc.jwtsecret=/genesis/jwt/jwtsecret
+      # Prometheus metrics at /debug/metrics/prometheus, inside the Docker network only.
+      - --metrics
+      - --metrics.addr=0.0.0.0
+      - --metrics.port=6060
     ports:
       - 127.0.0.1:8545:8545
       - 127.0.0.1:8546:8546
@@ -72,6 +76,9 @@ services:
       - --disable-upnp
       - --disable-packet-filter
       - --enable-private-discovery
+      - --metrics
+      - --metrics-address=0.0.0.0
+      - --metrics-port=5054
     ports:
       - 127.0.0.1:4000:4000
     volumes:
@@ -94,6 +101,9 @@ services:
       - --init-slashing-protection
       - --beacon-nodes=http://beacon:4000
       - --suggested-fee-recipient=0x000000000000000000000000000000000000dEaD
+      - --metrics
+      - --metrics-address=0.0.0.0
+      - --metrics-port=5064
     volumes:
       - *genesis
       - ../../../.devnet/l1/genesis/keys:/keys

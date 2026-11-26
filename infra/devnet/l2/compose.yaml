@@ -52,6 +52,7 @@ services:
       - --authrpc.jwtsecret=/secrets/jwt.hex
       - --max-outbound-peers=0
       - --max-inbound-peers=0
+      - --metrics=0.0.0.0:9001
     ports:
       - 127.0.0.1:18545:8545
       - 127.0.0.1:18546:8546
@@ -100,6 +101,8 @@ services:
       - --p2p.discovery.path=/data/discovery
       - --rpc.addr=0.0.0.0
       - --rpc.port=9545
+      - --metrics.enabled
+      - --metrics.port=7300
     ports:
       - 127.0.0.1:19545:9545
     volumes:
@@ -139,6 +142,8 @@ services:
       - --max-channel-duration=5
       - --num-confirmations=4
       - --wait-node-sync
+      - --metrics.enabled
+      - --metrics.port=7300
 
   verifier-op-reth:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-reth:v2.10.0@sha256:885007dce21382f44269734c7b02f065c8cbc12c7b18c3aeb35e1e93cc045997
@@ -160,6 +165,7 @@ services:
       - --authrpc.jwtsecret=/secrets/jwt.hex
       - --max-outbound-peers=0
       - --max-inbound-peers=0
+      - --metrics=0.0.0.0:9001
       # Transactions sent to this node are forwarded to the sequencer, the only node
       # that builds blocks.
       - --rollup.sequencer=http://op-reth:8545
@@ -207,6 +213,8 @@ services:
       - --p2p.discovery.path=/data/discovery
       - --rpc.addr=0.0.0.0
       - --rpc.port=9545
+      - --metrics.enabled
+      - --metrics.port=7300
     ports:
       - 127.0.0.1:29545:9545
     volumes:
@@ -244,3 +252,5 @@ services:
       # Differs from production, where a proposal is made about once an hour.
       - --proposal-interval=60s
       - --num-confirmations=4
+      - --metrics.enabled
+      - --metrics.port=7300

@@ -1,10 +1,12 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help up down status reset check check-docs check-shell check-secrets check-go l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-logs l2-down l2-reset
+.PHONY: help up down status reset obs-up obs-check obs-down check check-docs check-shell check-secrets check-go l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-logs l2-down l2-reset
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
+OBS := docker compose -f infra/observability/compose.yaml
+PROM_IMAGE := prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
 STEP := $(MAKE) --no-print-directory
 
 help: ## List the targets
@@ -19,16 +21,20 @@ up: ## Start the whole devnet from any state, in order, and check each part
 	@$(STEP) l2-verify
 	@$(STEP) l2-up
 	@$(STEP) l2-check
+	@$(STEP) obs-up
+	@$(STEP) obs-check
 	@echo "up: ok"
 
-down: ## Stop the L2, then the L1; keep all data
+down: ## Stop observability, the L2, then the L1; keep all data
+	@$(OBS) down
 	@$(L2) down
 	@$(L1) down
 
 status: ## One look at services, heads and operator balances, without waiting
 	@scripts/devnet/status.sh
 
-reset: ## Stop everything and delete chain data and the deployment; role keys are kept
+reset: ## Stop everything and delete chain data, metrics and the deployment; role keys are kept
+	@$(OBS) down --volumes
 	@$(L2) down
 	@$(L1) down
 	@scripts/devnet/l2-init.sh --reset
@@ -68,7 +74,8 @@ l1-blob-check: ## Send one blob transaction on the local L1 and wait for its inc
 l1-logs: ## Follow the logs of the local L1
 	@$(L1) logs --follow --tail 50
 
-l1-down: ## Stop the local L1 and keep its data; stops the L2 first, which uses its network
+l1-down: ## Stop the local L1 and keep its data; stops what uses its network first
+	@$(OBS) down
 	@$(L2) down
 	@$(L1) down
 
@@ -103,9 +110,21 @@ l2-withdraw: ## Withdraw 0.1 ETH from the L2 to the L1: start, prove, finalize, 
 l2-logs: ## Follow the logs of the L2 services
 	@$(L2) logs --follow --tail 50
 
-l2-down: ## Stop the L2 services and keep their data
+l2-down: ## Stop the L2 services and keep their data; stops observability first
+	@$(OBS) down
 	@$(L2) down
 
 l2-reset: ## Stop the L2 services and delete the chain data (keys and deployment kept)
+	@$(OBS) down
 	@$(L2) down
 	@scripts/devnet/l2-init.sh --reset
+
+obs-up: ## Start Prometheus, scraping every client of the L1 and the L2; needs l1-up and l2-up
+	@docker run --rm --entrypoint promtool -v "$(CURDIR)/infra/observability:/c:ro" $(PROM_IMAGE) check config /c/prometheus.yml
+	@$(OBS) up -d --quiet-pull
+
+obs-check: ## Show that Prometheus scrapes all nine clients and each reports series
+	@scripts/observability/obs-check.sh
+
+obs-down: ## Stop Prometheus and keep its data
+	@$(OBS) down
