@@ -1,0 +1,99 @@
+# Local proof-of-stake L1: one execution client, one beacon node, one validator client.
+# Genesis files and keystores are created by scripts/devnet/l1-init.sh into .devnet/l1.
+# Ports are bound to 127.0.0.1 only. The engine API (8551) is not published at all.
+name: settled-l1
+
+x-genesis: &genesis ../../../.devnet/l1/genesis:/genesis:ro
+
+services:
+  geth-init:
+    image: ethereum/client-go:v1.17.10
+    command:
+      - init
+      - --datadir=/data
+      - --state.scheme=path
+      - /genesis/metadata/genesis.json
+    volumes:
+      - *genesis
+      - ../../../.devnet/l1/geth:/data
+
+  geth:
+    image: ethereum/client-go:v1.17.10
+    depends_on:
+      geth-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    command:
+      - --datadir=/data
+      - --networkid=3151908
+      - --syncmode=full
+      - --state.scheme=path
+      - --nodiscover
+      - --maxpeers=0
+      - --http
+      - --http.addr=0.0.0.0
+      - --http.port=8545
+      - --http.vhosts=*
+      - --http.api=eth,net,web3,txpool,debug
+      - --ws
+      - --ws.addr=0.0.0.0
+      - --ws.port=8546
+      - --ws.api=eth,net,web3
+      - --authrpc.addr=0.0.0.0
+      - --authrpc.port=8551
+      - --authrpc.vhosts=*
+      - --authrpc.jwtsecret=/genesis/jwt/jwtsecret
+    ports:
+      - 127.0.0.1:8545:8545
+      - 127.0.0.1:8546:8546
+    volumes:
+      - *genesis
+      - ../../../.devnet/l1/geth:/data
+
+  beacon:
+    image: sigp/lighthouse:v8.3.3
+    depends_on:
+      - geth
+    restart: unless-stopped
+    command:
+      - lighthouse
+      - bn
+      - --testnet-dir=/genesis/metadata
+      - --datadir=/data
+      - --execution-endpoint=http://geth:8551
+      - --execution-jwt=/genesis/jwt/jwtsecret
+      - --http
+      - --http-address=0.0.0.0
+      - --http-port=4000
+      - --supernode
+      - --allow-insecure-genesis-sync
+      - --disable-enr-auto-update
+      - --enr-address=127.0.0.1
+      - --disable-upnp
+      - --disable-packet-filter
+      - --enable-private-discovery
+    ports:
+      - 127.0.0.1:4000:4000
+    volumes:
+      - *genesis
+      - ../../../.devnet/l1/beacon:/data
+
+  validator:
+    image: sigp/lighthouse:v8.3.3
+    depends_on:
+      - beacon
+    restart: unless-stopped
+    command:
+      - lighthouse
+      - vc
+      - --testnet-dir=/genesis/metadata
+      # No --datadir: Lighthouse v8 refuses it together with --validators-dir. The
+      # validators dir then also holds the slashing protection database.
+      - --validators-dir=/keys/keys
+      - --secrets-dir=/keys/secrets
+      - --init-slashing-protection
+      - --beacon-nodes=http://beacon:4000
+      - --suggested-fee-recipient=0x000000000000000000000000000000000000dEaD
+    volumes:
+      - *genesis
+      - ../../../.devnet/l1/genesis/keys:/keys

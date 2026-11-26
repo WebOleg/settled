@@ -14,11 +14,23 @@ Everything runs on one machine and needs no cloud account.
 
 ## Status
 
-Stage 0 is done: the repository, its rules and the local checks. No chain or service
-runs yet. This file describes only what exists and grows with the code.
+Stage 1 is in progress. The local L1 runs; the L2 does not exist yet. This file
+describes only what exists and grows with the code.
 
 The rules the code follows are in [ENGINEERING.md](ENGINEERING.md). The plan is in
 [ROADMAP.md](ROADMAP.md).
+
+## Local L1
+
+```sh
+make l1-up
+make l1-check
+```
+
+A proof-of-stake L1 with geth and Lighthouse, started from its own genesis. Requires
+Docker, curl and jq. Services, endpoints and files are described in
+[infra/devnet/l1/README.md](infra/devnet/l1/README.md); the reasons behind the setup are
+in [docs/design/devnet.md](docs/design/devnet.md).
 
 ## Checks
 

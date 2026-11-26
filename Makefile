@@ -1,10 +1,12 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help check check-docs check-shell check-secrets
+.PHONY: help check check-docs check-shell check-secrets l1-up l1-down l1-reset l1-logs l1-check
+
+L1 := docker compose -f infra/devnet/l1/compose.yaml
 
 help: ## List the targets
-	@awk 'BEGIN { FS = ":.*## " } /^[a-z-]+:.*## / { printf "  %-14s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@awk 'BEGIN { FS = ":.*## " } /^[a-z0-9-]+:.*## / { printf "  %-14s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 check: check-docs check-shell check-secrets ## Run every local check
 
@@ -18,3 +20,20 @@ check-shell: ## shellcheck on every tracked shell script
 
 check-secrets: ## gitleaks on the full git history, findings redacted
 	@gitleaks git --redact --no-banner --log-level warn . && echo "check-secrets: ok"
+
+l1-up: ## Start the local L1; creates its genesis on first run
+	@scripts/devnet/l1-init.sh
+	@$(L1) up -d --quiet-pull
+
+l1-check: ## Show that the local L1 answers, advances and agrees across layers
+	@scripts/devnet/l1-check.sh
+
+l1-logs: ## Follow the logs of the local L1
+	@$(L1) logs --follow --tail 50
+
+l1-down: ## Stop the local L1 and keep its data
+	@$(L1) down
+
+l1-reset: ## Stop the local L1 and delete its data and genesis
+	@$(L1) down
+	@scripts/devnet/l1-init.sh --reset
