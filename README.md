@@ -186,7 +186,15 @@ make alert-drill
 ```
 
 stops the batcher, shows its alert fire and reach Alertmanager, starts the batcher and
-shows the alert clear. What is collected and why is in
+shows the alert clear.
+
+```sh
+make l2-load
+```
+
+sends 50 transfers a second to the L2 for two minutes and reports how many were
+included, how fast, and how long until they were safe. Why it works this way is in
+[docs/design/load.md](docs/design/load.md). What is collected and why is in
 [docs/design/observability.md](docs/design/observability.md); the stack is in
 [infra/observability/README.md](infra/observability/README.md).
 

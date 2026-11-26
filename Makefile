@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-logs l2-down l2-reset
+.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load l2-logs l2-down l2-reset
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
@@ -111,6 +111,9 @@ l2-deposit: ## Deposit 1 ETH from the L1 to the L2 and account for every wei
 
 l2-withdraw: ## Withdraw 0.1 ETH from the L2 to the L1: start, prove, finalize, every wei checked
 	@scripts/devnet/l2-withdraw.sh
+
+l2-load: ## Send 50 transfers a second to the L2 for 2 minutes; measure inclusion and safe latency
+	@scripts/devnet/l2-load.sh
 
 l2-logs: ## Follow the logs of the L2 services
 	@$(L2) logs --follow --tail 50
