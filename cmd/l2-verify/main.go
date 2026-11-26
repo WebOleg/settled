@@ -1,6 +1,8 @@
 // Command l2-verify checks a deployment of the devnet L2 against the intent, in two
 // places. On the L1 it reads the contracts: each owner and operator is the role meant
-// for it, the deployer holds none of them, and SystemConfig holds the expected values.
+// for it, the deployer holds none of them, SystemConfig holds the expected values, and
+// the dispute and withdrawal contracts hold the respected game type and the devnet
+// timings.
 // In the exported chain config it checks the fee parameters and that genesis.json and
 // rollup.json point at the contracts that were deployed. It needs no key.
 package main
@@ -51,7 +53,19 @@ var checks = []check{
 	{contract: "SystemConfigProxy", signature: "daFootprintGasScalar()", want: big.NewInt(0), note: "unset; Jovian uses 400"},
 	{contract: "SystemConfigProxy", signature: "minBaseFee()", want: big.NewInt(0)},
 	{contract: "SystemConfigProxy", signature: "operatorFeeScalar()", want: big.NewInt(0)},
+	// Withdrawals are proven against the dispute game type the AnchorStateRegistry
+	// respects. op-contracts v9 starts a chain on 5, SUPER_PERMISSIONED_CANNON: only the
+	// proposer creates games, only the challenger disputes them.
+	{contract: "AnchorStateRegistryProxy", signature: "respectedGameType()", want: big.NewInt(RespectedGameType), note: "SUPER_PERMISSIONED_CANNON"},
+	// Devnet timings from the intent; the production values are in internal/l2intent.
+	{contract: "OptimismPortalProxy", signature: "proofMaturityDelaySeconds()", want: big.NewInt(l2intent.ProofMaturityDelaySeconds), note: "devnet; production 604800"},
+	{contract: "AnchorStateRegistryProxy", signature: "disputeGameFinalityDelaySeconds()", want: big.NewInt(l2intent.DisputeGameFinalityDelaySeconds), note: "devnet; production 302400"},
+	{contract: "PreimageOracleImpl", signature: "challengePeriod()", want: big.NewInt(l2intent.PreimageOracleChallengePeriod), note: "devnet; production 86400"},
+	{contract: "DelayedWethPermissionedGameProxy", signature: "delay()", want: big.NewInt(l2intent.FaultGameWithdrawalDelay), note: "devnet; production 604800"},
 }
+
+// RespectedGameType is the dispute game type withdrawals are proven against.
+const RespectedGameType = 5
 
 func main() {
 	rpcURL := flag.String("rpc", "http://127.0.0.1:8545", "L1 execution JSON-RPC endpoint")

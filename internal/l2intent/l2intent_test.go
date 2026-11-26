@@ -150,3 +150,37 @@ func TestRenderRejectsBadInput(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderDisputeTimings(t *testing.T) {
+	out, err := Render(params())
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(out)
+	checks := map[string]string{
+		"proofMaturityDelaySeconds":               "60",
+		"disputeGameFinalityDelaySeconds":         "30",
+		"faultGameMaxClockDuration":               "120",
+		"faultGameClockExtension":                 "30",
+		"preimageOracleChallengePeriod":           "30",
+		"faultGameWithdrawalDelay":                "60",
+		"dangerouslyAllowCustomDisputeParameters": "true",
+	}
+	for key, want := range checks {
+		if got := field(t, doc, "[globalDeployOverrides]", key); got != want {
+			t.Errorf("%s = %s, want %s", key, got, want)
+		}
+	}
+}
+
+// The dispute game contracts refuse timings that break these relations, so a wrong
+// value would only show up as a failed deployment.
+func TestDisputeTimingsFitTheGameClock(t *testing.T) {
+	if 2*FaultGameClockExtension > FaultGameMaxClockDuration {
+		t.Errorf("2 x clock extension %d > max clock duration %d", 2*FaultGameClockExtension, FaultGameMaxClockDuration)
+	}
+	if FaultGameClockExtension+PreimageOracleChallengePeriod > FaultGameMaxClockDuration {
+		t.Errorf("clock extension + preimage challenge period %d > max clock duration %d",
+			FaultGameClockExtension+PreimageOracleChallengePeriod, FaultGameMaxClockDuration)
+	}
+}

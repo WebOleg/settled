@@ -110,6 +110,32 @@ Chain parameters in the intent:
 | `minBaseFee` | 0 | Jovian default |
 | `daFootprintGasScalar` | 400 | Jovian treats 0 as 400; written out so the file states the value in use |
 
+Dispute and withdrawal timings, set in the intent's `globalDeployOverrides`:
+
+| Parameter | Devnet | Production | What it delays |
+|---|---|---|---|
+| `proofMaturityDelaySeconds` | 60 s | 7 days | Finalizing a withdrawal after it was proven |
+| `disputeGameFinalityDelaySeconds` | 30 s | 3.5 days | Using a resolved game for withdrawals; the guardian's window to step in |
+| `faultGameMaxClockDuration` | 120 s | 3.5 days | Resolving a game; an unchallenged claim wins when its clock runs out |
+| `faultGameClockExtension` | 30 s | 3 hours | Extra time for a move made close to the end of a clock |
+| `preimageOracleChallengePeriod` | 30 s | 1 day | Challenging a large preimage proposal |
+| `faultGameWithdrawalDelay` | 60 s | 7 days | Withdrawing a bond from DelayedWETH |
+
+All six differ from production, so a withdrawal completes in about 15 minutes instead of
+more than a week; most of that is waiting for the L1 to finalize the batches. The
+contracts are the same; only the numbers change. Two relations are checked by the
+contracts and by a unit test in [internal/l2intent](../../internal/l2intent): twice the
+clock extension, and the clock extension plus the preimage challenge period, must each
+fit in the max clock duration. `dangerouslyAllowCustomDisputeParameters` lets the chain
+deploy with timings that are not the standard ones. op-deployer drops override keys it
+does not know without an error, which is why `make l2-verify` reads every timing back
+from the L1.
+
+The respected dispute game type is 5, `SUPER_PERMISSIONED_CANNON`, which op-contracts v9
+deploys for a new chain: only the proposer creates games and only the challenger can
+dispute them. A permissionless game needs an absolute prestate built for this chain;
+that is a roadmap stage of its own.
+
 Why not another op-deployer version, as checked on 2026-11-26:
 
 | Option | Why not |
@@ -145,6 +171,11 @@ On the L1, read from the contracts:
 | SystemConfig | `eip1559Denominator()`, `eip1559Elasticity()` | 0, unset |
 | SystemConfig | `daFootprintGasScalar()` | 0, unset |
 | SystemConfig | `minBaseFee()`, `operatorFeeScalar()` | 0 |
+| AnchorStateRegistry | `respectedGameType()` | 5, `SUPER_PERMISSIONED_CANNON` |
+| OptimismPortal | `proofMaturityDelaySeconds()` | 60 |
+| AnchorStateRegistry | `disputeGameFinalityDelaySeconds()` | 30 |
+| PreimageOracle | `challengePeriod()` | 30 |
+| DelayedWETH (permissioned games) | `delay()` | 60 |
 
 It also fails if the deployer address holds any of these roles.
 

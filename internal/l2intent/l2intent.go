@@ -26,6 +26,19 @@ const (
 	DAFootprintGasScalar = 400
 )
 
+// Dispute and withdrawal timings, in seconds. They differ from production on purpose,
+// so a withdrawal completes in minutes on the devnet; the production value is in each
+// comment. The contracts check their relations: twice the clock extension and the clock
+// extension plus the preimage challenge period must both fit in the max clock duration.
+const (
+	ProofMaturityDelaySeconds       = 60  // production 604800 (7 days)
+	DisputeGameFinalityDelaySeconds = 30  // production 302400 (3.5 days)
+	FaultGameMaxClockDuration       = 120 // production 302400 (3.5 days)
+	FaultGameClockExtension         = 30  // production 10800 (3 hours)
+	PreimageOracleChallengePeriod   = 30  // production 86400 (1 day)
+	FaultGameWithdrawalDelay        = 60  // production 604800 (7 days), bonds in DelayedWETH
+)
+
 // Params are the inputs of one intent file.
 type Params struct {
 	L1ChainID         uint64
@@ -80,6 +93,12 @@ func Render(p Params) ([]byte, error) {
 		"Elasticity":  EIP1559Elasticity,
 		"GasLimit":    GasLimit,
 		"DAScalar":    DAFootprintGasScalar,
+		"Maturity":    ProofMaturityDelaySeconds,
+		"Finality":    DisputeGameFinalityDelaySeconds,
+		"MaxClock":    FaultGameMaxClockDuration,
+		"ClockExt":    FaultGameClockExtension,
+		"Preimage":    PreimageOracleChallengePeriod,
+		"WethDelay":   FaultGameWithdrawalDelay,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("l2intent: render: %w", err)
@@ -88,7 +107,10 @@ func Render(p Params) ([]byte, error) {
 }
 
 // The layout follows the file that `op-deployer init --intent-type custom` writes for
-// op-deployer v0.9.0, with every value filled in.
+// op-deployer v0.9.0, with every value filled in. globalDeployOverrides sets the dispute
+// and withdrawal timings for the implementations and for this chain's dispute game;
+// dangerouslyAllowCustomDisputeParameters lets the chain use timings that are not the
+// standard ones.
 var intentTemplate = template.Must(template.New("intent").Parse(`configType = "custom"
 opDeployerVersion = "{{.Version}}"
 l1ChainID = {{.L1ChainID}}
@@ -101,6 +123,15 @@ useInterop = false
   SuperchainProxyAdminOwner = "{{index .A "superchain-admin"}}"
   SuperchainGuardian = "{{index .A "guardian"}}"
   Challenger = "{{index .A "challenger"}}"
+
+[globalDeployOverrides]
+  proofMaturityDelaySeconds = {{.Maturity}}
+  disputeGameFinalityDelaySeconds = {{.Finality}}
+  faultGameMaxClockDuration = {{.MaxClock}}
+  faultGameClockExtension = {{.ClockExt}}
+  preimageOracleChallengePeriod = {{.Preimage}}
+  faultGameWithdrawalDelay = {{.WethDelay}}
+  dangerouslyAllowCustomDisputeParameters = true
 
 [[chains]]
   id = "{{.L2ChainID}}"
