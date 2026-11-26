@@ -153,6 +153,18 @@ op-batcher posts them to the L1 as blobs, and a second op-reth and op-node verif
 from the L1. Services, endpoints and files are in
 [infra/devnet/l2/README.md](infra/devnet/l2/README.md).
 
+## Proposals and moving ETH
+
+```sh
+make l2-games
+make l2-deposit
+```
+
+`l2-games` checks the dispute games the proposer posts: each root claim is recomputed
+from the verifier's execution client. `l2-deposit` moves 1 ETH from the L1 to the L2 and
+accounts for every wei on both sides. Why they work this way is in
+[docs/design/devnet.md](docs/design/devnet.md#l2-proposer).
+
 ## Checks
 
 ```sh

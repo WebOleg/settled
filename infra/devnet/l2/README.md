@@ -21,6 +21,7 @@ and the deployment (`make l2-deploy`).
 | `make l2-up` | Prepares the runtime folders, engine API secrets and node keys on first run, writes the verifier's peer address and the proposer's factory address, checks the role keys, then starts the six services |
 | `make l2-check` | Shows that the L2 answers, advances every 2 s and follows the L1; that the safe head advances; that the batches on the L1 are blob transactions to the batch inbox; that op-reth and op-node agree on the unsafe and safe blocks; and that the verifier is connected to the sequencer, catches up, and has the same block hashes and state roots |
 | `make l2-games` | Waits up to 15 minutes for the first dispute game, then checks the recent games: type, creator, resolved for the proposer, respected type, and that each root claim equals the super root recomputed from the verifier |
+| `make l2-deposit` | Deposits 1 ETH from the devnet user on the L1 to the L2 and checks every wei on both sides, then waits until the credit is safe |
 | `make l2-logs` | Follows the logs of all services |
 | `make l2-down` | Stops the services and keeps their data |
 | `make l2-reset` | Stops the services and deletes the chain data; keys and deployment are kept |

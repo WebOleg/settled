@@ -288,6 +288,33 @@ root must also equal what the verifier's op-node reports, and the root claim mus
 the recomputed super root. The encoding was checked against a real block of this L2:
 the output root computed from op-reth data matched the one op-node returned.
 
+## L2: deposits
+
+`make l2-deposit` moves 1 ETH from the devnet user on the L1 to the same address on the
+L2, with [cmd/l2-deposit](../../cmd/l2-deposit). The user is index 2 of the public
+devnet mnemonic; index 0 funds the operators, so the user has its own nonces.
+
+The path of a deposit: `OptimismPortal.depositTransaction` takes the ETH, keeps it in
+custody on the L1 (in the ETHLockbox) and emits an event. op-node reads the event while
+it derives the L2 from the L1 and puts a deposit transaction (type `0x7e`) at the start
+of an L2 block; that transaction mints the ETH on the L2. No key on the L2 is involved,
+and the sequencer cannot leave a deposit out: every node derives it from the same L1
+block.
+
+| Check | Expected, exactly |
+|---|---|
+| ETHLockbox and OptimismPortal together, at the deposit block against the block before | the amount more |
+| The user on the L1, same two blocks | the amount plus gas used times the effective gas price less |
+| The user on the L2 | the amount more, in one block |
+| That L2 block | holds a deposit transaction to the user that mints exactly the amount |
+| The verifier's safe head | reaches that block: the credit is derived from the L1 |
+
+| Choice | Reason |
+|---|---|
+| Amounts in wei, balances read at fixed blocks | A balance read at "latest" can include anything else that happened meanwhile. Reading the block before and the block of the deposit makes the difference exactly what the deposit did. |
+| The deposit counts once it is safe | An unsafe block is only the sequencer's word. A safe block is derived from the L1 by the verifier. The bridge in stage 5 goes one step further and credits only at finalized. |
+| `OptimismPortal` directly, not `L1StandardBridge` | The portal is the base layer every bridge uses. The standard bridge adds a cross-domain message on top, which is worth showing with tokens, not with plain ETH. |
+
 ## Alternatives rejected
 
 | Option | Why not |
