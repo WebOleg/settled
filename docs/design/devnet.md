@@ -1,8 +1,8 @@
 # Design: local devnet
 
 How the local network is built and why. This file covers what exists in the repository:
-the L1, and the operator keys, contract deployment and sequencer of the L2. It grows as
-the L2 is added.
+the L1, and the operator keys, contract deployment, sequencer, batcher and verifier of
+the L2. It grows as the L2 is added.
 
 ## Goal
 
@@ -178,7 +178,7 @@ of the services, endpoints and files are in
 | `--rollup.l1-chain-config` gets the `config` object of the L1 genesis, limited to the fields op-node knows | op-node knows the forks and blob parameters of public L1s only; the local L1 has to be described to it. op-node refuses the whole genesis file (`unknown field "config"`), so `l2-init.sh` extracts the object. op-node also decodes it strictly, and the generator writes `terminalTotalDifficultyPassed`, which go-ethereum has removed; `l2-init.sh` keeps only the fields of go-ethereum's `ChainConfig` at commit `3dee18e7108c`, the version op-node v1.21.0 is built on, and prints what it drops. The list is rechecked when op-node is upgraded. |
 | `--safedb.path` set | Keeps which L2 block became safe at which L1 block, which the proposer and challenger ask for |
 | One engine API secret per op-node and op-reth pair, mode 600 | A secret shared across pairs would let one node's credentials drive another engine |
-| Peer-to-peer off, no sequencer key in the container | The sequencer key signs unsafe blocks for gossip to other nodes. With no other node there is nothing to gossip to, and a container gets no key it does not use. |
+| Peer-to-peer on, sequencer key as a Compose secret | The sequencer key signs every new block before op-node gossips it, and the verifier accepts only blocks signed by the `unsafeBlockSigner` in SystemConfig. The key is read from a secret file into the environment of op-node when the container starts, as for the batcher. |
 | Ports 18545, 18546, 19545 on 127.0.0.1 | Separate from the L1 ports; nothing listens on other interfaces |
 
 The safe and finalized L2 heads come from batches on the L1, which the batcher posts.
@@ -201,6 +201,26 @@ becomes finalized when the L1 block holding its batch is finalized.
 | The key as a Compose secret, read into the environment when the container starts | Only the batcher container gets a key. It is not written in `compose.yaml`, an env file or a command line, so it does not show in `docker inspect`, in `docker compose config` or in the process list. This was checked against `docker inspect` and `docker compose config` when the service was added. The simpler options, `--private-key` on the command line or an env file, show the key in `docker inspect`. |
 | No published port, metrics off | Nothing on the host calls the batcher yet. Metrics come with the observability stage. |
 
+## L2: verifier
+
+A second op-reth and op-node, with no key of any role. The verifier builds the chain
+the way any node that is not the sequencer does: op-node reads the batches from the L1
+and derives the blocks, and new blocks that are not batched yet arrive over
+peer-to-peer from the sequencer. A block becomes safe on the verifier only when the
+verifier has derived it from the L1 itself, so a matching safe head shows that the L1
+alone holds the chain. `make l2-check` compares the block hash and the state root of
+the verifier's safe and unsafe heads with the sequencer's blocks at the same numbers.
+
+| Choice | Reason |
+|---|---|
+| `--syncmode=consensus-layer` | Every block goes through derivation in op-node. The other mode lets the execution client fetch state from peers, which would skip the derivation this node exists to check. |
+| Fixed peer-to-peer node keys, created once by `l2-init.sh` | A peer ID is derived from the node key, so fixed keys give fixed IDs. `cmd/l2-peer-id` computes the sequencer's ID before either node starts, and the verifier gets the sequencer as a static peer. `make l2-check` asks each op-node which ID it announces and compares. |
+| Discovery off, static peer only, port not published | Two nodes in one Docker network need no discovery, and nothing outside it should be able to connect. |
+| Own engine API secret | One secret per op-node and op-reth pair, as for the sequencer. |
+| `--rollup.sequencer` on the verifier's op-reth | Transactions sent to the verifier are forwarded to the sequencer, the only node that builds blocks. This is how public RPC nodes of OP Stack chains work. |
+| Verifier ports 28545, 28546, 29545 on 127.0.0.1 | Separate from the sequencer's ports. |
+| Verification confirmations left at 0 | The verifier derives from the L1 head, as the sequencer does. Nodes that follow a public L1 often wait a few L1 blocks to avoid work undone by L1 reorgs; this L1 does not reorg on its own. |
+
 ## Alternatives rejected
 
 | Option | Why not |
@@ -211,8 +231,9 @@ becomes finalized when the L1 block holding its batch is finalized.
 
 ## Known limits
 
-- One node per layer, so there is no peer-to-peer traffic and no natural reorg. A reorg
-  has to be produced on purpose.
+- One L1 node, so the L1 has no peer-to-peer traffic and no natural reorg. A reorg has
+  to be produced on purpose. The L2 has two nodes, and their peer-to-peer traffic
+  stays inside the Docker network.
 - With no peers, the beacon node logs `Low peer count` and `NoPeersSubscribedToTopic`
   warnings on every slot. They are expected here.
 - `make l1-check` judges sync by how far the head is behind the current slot
@@ -222,9 +243,10 @@ becomes finalized when the L1 block holding its batch is finalized.
 - The validator keys are public test keys. They are safe only on this network.
 - The suggested fee recipient is the burn address `0x...dEaD`. Priority fees on this
   network have no value.
-- The batcher key sits in a file on the same machine. Anyone who can run `docker exec`
-  or read `.devnet/l2/keys` can read it. Production batchers sign through a remote
-  signer (`--signer.*`), so the key never reaches the host that runs the batcher.
+- The batcher and sequencer keys sit in files on the same machine. Anyone who can run
+  `docker exec` or read `.devnet/l2/keys` can read them. Production batchers sign
+  through a remote signer (`--signer.*`), so the key never reaches the host that runs
+  the batcher.
 - If the L2 runs without a batcher for longer than the sequencing window (3600 L1
   blocks, 6 hours here), op-node replaces the unbatched blocks when the batcher comes
   back. `make l2-reset` starts the L2 over in that case.

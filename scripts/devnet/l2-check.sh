@@ -2,13 +2,18 @@
 # Shows that the L2 works: op-reth answers with the L2 chain id, the unsafe head
 # advances at the 2 s block time, op-node follows the L1, op-reth and op-node agree on
 # the head, the safe head advances because the batcher posts batches, those batches are
-# blob transactions to the batch inbox, and both clients agree on the safe block.
-# Waits up to 120 s for the first L2 block and up to 4 min for the safe head.
+# blob transactions to the batch inbox, and both clients agree on the safe block. Then
+# the verifier: it is connected to the sequencer by the expected peer IDs, catches up,
+# and has the same blocks and state, with its safe head derived from the L1 on its own.
+# Waits up to 120 s for the first L2 block, 4 min for the safe head and 4 min for the
+# verifier to catch up.
 set -euo pipefail
 
 EL="http://127.0.0.1:18545"
 NODE="http://127.0.0.1:19545"
 L1="http://127.0.0.1:8545"
+VER_EL="http://127.0.0.1:28545"
+VER_NODE="http://127.0.0.1:29545"
 EXPECTED_CHAIN_ID="0x66a44" # 420420
 LOOKBACK=50                 # L1 blocks searched for batches, 5 min at 6 s
 
@@ -102,4 +107,59 @@ other_txs=$(($(printf '%s\n' "$types" | grep -c . || true) - blob_txs))
 [ "$blob_txs" -gt 0 ] || fail "no blob transaction from the batcher to the inbox in L1 blocks $from-$l1_head"
 [ "$other_txs" -eq 0 ] || fail "$other_txs batcher transactions without blobs in L1 blocks $from-$l1_head"
 echo "batches          $blob_txs blob transactions from the batcher to the inbox in L1 blocks $from-$l1_head, none as calldata"
+
+# Verifier. Peer IDs come from the node keys (l2-init.sh); each op-node must announce
+# the ID its key gives, and the verifier must be connected to the sequencer.
+seq_peer="$(cat "$root/.devnet/l2/sequencer/peer-id")"
+ver_peer="$(cat "$root/.devnet/l2/verifier/peer-id")"
+t=0
+until call "$VER_EL" eth_chainId '[]' >/dev/null 2>&1 && call "$VER_NODE" optimism_syncStatus '[]' >/dev/null 2>&1; do
+  [ "$t" -lt 120 ] || fail "verifier op-reth or op-node does not answer after 120 s"
+  sleep 5; t=$((t + 5))
+done
+ver_chain="$(call "$VER_EL" eth_chainId '[]' | jq -r '.result')"
+[ "$ver_chain" = "$EXPECTED_CHAIN_ID" ] || fail "verifier chain id $ver_chain, expected $EXPECTED_CHAIN_ID"
+got="$(call "$NODE" opp2p_self '[]' | jq -r '.result.peerID')"
+[ "$got" = "$seq_peer" ] || fail "sequencer announces peer $got, its key gives $seq_peer"
+got="$(call "$VER_NODE" opp2p_self '[]' | jq -r '.result.peerID')"
+[ "$got" = "$ver_peer" ] || fail "verifier announces peer $got, its key gives $ver_peer"
+t=0
+until call "$VER_NODE" opp2p_peers '[true]' | jq -e --arg p "$seq_peer" '.result.peers | has($p)' >/dev/null 2>&1; do
+  [ "$t" -lt 60 ] || fail "verifier is not connected to the sequencer peer $seq_peer"
+  sleep 5; t=$((t + 5))
+done
+echo "verifier peers   connected to the sequencer; peer IDs match the node keys"
+
+# Catching up: the verifier derives the batched blocks from the L1 and takes newer blocks
+# from gossip; blocks newer than its safe head attach once the batches between them land.
+vstatus() { call "$VER_NODE" optimism_syncStatus '[]' | jq -c '.result'; }
+t=0
+while :; do
+  seq_unsafe="$(status | jq -r '.unsafe_l2.number')"
+  ver_unsafe="$(vstatus | jq -r '.unsafe_l2.number')"
+  [ $((seq_unsafe - ver_unsafe)) -le 5 ] && break
+  [ "$t" -lt 240 ] || fail "verifier unsafe $ver_unsafe is $((seq_unsafe - ver_unsafe)) blocks behind the sequencer after 240 s"
+  sleep 5; t=$((t + 5))
+done
+echo "verifier sync    unsafe $ver_unsafe, sequencer $seq_unsafe"
+
+t=0
+until [ "$(vstatus | jq -r '.safe_l2.number')" -gt "$safe" ]; do
+  [ "$t" -lt 120 ] || fail "verifier safe head did not pass $safe in 120 s"
+  sleep 5; t=$((t + 5))
+done
+vs="$(vstatus)"
+ver_safe="$(printf '%s' "$vs" | jq -r '.safe_l2.number')"
+ver_unsafe="$(printf '%s' "$vs" | jq -r '.unsafe_l2.number')"
+echo "verifier safe    $ver_safe, derived from the L1 by the verifier itself"
+
+# Same blocks and same state: compare hash and state root of the verifier's safe and
+# unsafe heads with the sequencer's blocks at the same numbers.
+for n in "$ver_safe" "$ver_unsafe"; do
+  q="[\"0x$(printf '%x' "$n")\", false]"
+  a="$(call "$EL" eth_getBlockByNumber "$q" | jq -r '.result | .hash + " " + .stateRoot')"
+  b="$(call "$VER_EL" eth_getBlockByNumber "$q" | jq -r '.result | .hash + " " + .stateRoot')"
+  [ "$a" = "$b" ] || fail "block $n: sequencer $a, verifier $b"
+done
+echo "verifier state   blocks $ver_safe (safe) and $ver_unsafe (unsafe): same hash and state root as the sequencer"
 echo "l2-check: ok"

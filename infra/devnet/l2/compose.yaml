@@ -1,19 +1,24 @@
-# Devnet L2: op-reth (execution), op-node (rollup node, sequencing) and op-batcher
-# (posts the L2 blocks to the L1 as blobs). Reads the chain config written by make
-# l2-deploy; op-node and op-batcher join the L1 network to reach geth and the beacon
-# node. Ports are bound to 127.0.0.1 only; the engine API between op-node and op-reth
-# is not published at all. Images are pinned by digest.
+# Devnet L2. Sequencer: op-reth (execution), op-node (rollup node, sequencing) and
+# op-batcher (posts the L2 blocks to the L1 as blobs). Verifier: a second op-reth and
+# op-node that build the chain from the L1 and receive new blocks from the sequencer
+# over peer-to-peer. Reads the chain config written by make l2-deploy; the rollup nodes
+# and the batcher join the L1 network to reach geth and the beacon node. Ports are bound
+# to 127.0.0.1 only; engine APIs and peer-to-peer ports are not published at all. Images
+# are pinned by digest.
 name: settled-l2
 
 x-deployer: &deployer ../../../.devnet/l2/deployer:/deployer:ro
 x-l1-chain: &l1chain ../../../.devnet/l2/sequencer/l1-chain-config.json:/l1/chain-config.json:ro
 x-jwt: &jwt ../../../.devnet/l2/sequencer/jwt.hex:/secrets/jwt.hex:ro
+x-verifier-jwt: &verifierjwt ../../../.devnet/l2/verifier/jwt.hex:/secrets/jwt.hex:ro
 
-# The batcher key is the only key any container gets. It is mounted as a file, never put
-# in this file, an env file or a command line.
+# Role keys reach a container only as secret files, each to the one container that uses
+# it, never through this file, an env file or a command line.
 secrets:
   batcher_key:
     file: ../../../.devnet/l2/keys/batcher.key
+  sequencer_key:
+    file: ../../../.devnet/l2/keys/sequencer.key
 
 networks:
   default: {}
@@ -60,8 +65,17 @@ services:
     networks:
       - default
       - l1
-    command:
+    secrets:
+      - sequencer_key
+    # The sequencer key signs every new block before it is gossiped; the verifier accepts
+    # only blocks signed by the unsafeBlockSigner set in SystemConfig. Read from the
+    # secret file, so it is not in docker inspect or in the process arguments.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - set -eu; OP_NODE_P2P_SEQUENCER_KEY="$$(cat /run/secrets/sequencer_key)"; export OP_NODE_P2P_SEQUENCER_KEY; exec op-node "$$@"
       - op-node
+    command:
       - --l1=http://geth:8545
       - --l1.beacon=http://beacon:4000
       - --l2=http://op-reth:8551
@@ -73,9 +87,14 @@ services:
       - --rollup.l1-chain-config=/l1/chain-config.json
       - --sequencer.enabled
       - --safedb.path=/data/safedb
-      # No peers yet: the sequencer key is only needed to sign blocks for p2p gossip,
-      # so it is not given to this container until a second node exists.
-      - --p2p.disable
+      # Peer-to-peer inside the Docker network only: a fixed node key, no discovery; the
+      # verifier dials this node as a static peer.
+      - --p2p.listen.ip=0.0.0.0
+      - --p2p.listen.tcp=9222
+      - --p2p.no-discovery
+      - --p2p.priv.path=/p2p/node.key
+      - --p2p.peerstore.path=/data/peerstore
+      - --p2p.discovery.path=/data/discovery
       - --rpc.addr=0.0.0.0
       - --rpc.port=9545
     ports:
@@ -84,6 +103,7 @@ services:
       - *deployer
       - *l1chain
       - *jwt
+      - ../../../.devnet/l2/sequencer/p2p.key:/p2p/node.key:ro
       - ../../../.devnet/l2/sequencer/op-node:/data
 
   op-batcher:
@@ -116,3 +136,76 @@ services:
       - --max-channel-duration=5
       - --num-confirmations=4
       - --wait-node-sync
+
+  verifier-op-reth:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-reth:v2.10.0@sha256:885007dce21382f44269734c7b02f065c8cbc12c7b18c3aeb35e1e93cc045997
+    restart: unless-stopped
+    command:
+      - node
+      - --chain=/deployer/genesis.json
+      - --datadir=/data
+      - --http
+      - --http.addr=0.0.0.0
+      - --http.port=8545
+      - --http.api=eth,net,web3,txpool
+      - --ws
+      - --ws.addr=0.0.0.0
+      - --ws.port=8546
+      - --ws.api=eth,net,web3
+      - --authrpc.addr=0.0.0.0
+      - --authrpc.port=8551
+      - --authrpc.jwtsecret=/secrets/jwt.hex
+      - --max-outbound-peers=0
+      - --max-inbound-peers=0
+      # Transactions sent to this node are forwarded to the sequencer, the only node
+      # that builds blocks.
+      - --rollup.sequencer=http://op-reth:8545
+    ports:
+      - 127.0.0.1:28545:8545
+      - 127.0.0.1:28546:8546
+    volumes:
+      - *deployer
+      - *verifierjwt
+      - ../../../.devnet/l2/verifier/op-reth:/data
+
+  verifier-op-node:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.21.0@sha256:edd773e1351823b8ec950b59c5382b11d4032d3f8503dfc11caa5f23924e3b84
+    restart: unless-stopped
+    depends_on:
+      - verifier-op-reth
+      - op-node
+    networks:
+      - default
+      - l1
+    # OP_NODE_P2P_STATIC: the sequencer's address with its peer ID, written by
+    # l2-init.sh from the sequencer's node key. Not a secret.
+    env_file:
+      - ../../../.devnet/l2/verifier/p2p.env
+    command:
+      - op-node
+      - --l1=http://geth:8545
+      - --l1.beacon=http://beacon:4000
+      - --l2=http://verifier-op-reth:8551
+      - --l2.jwt-secret=/secrets/jwt.hex
+      - --rollup.config=/deployer/rollup.json
+      - --rollup.l1-chain-config=/l1/chain-config.json
+      # Every block comes from deriving the L1 through this op-node; the execution
+      # client does not sync state from peers.
+      - --syncmode=consensus-layer
+      - --safedb.path=/data/safedb
+      - --p2p.listen.ip=0.0.0.0
+      - --p2p.listen.tcp=9222
+      - --p2p.no-discovery
+      - --p2p.priv.path=/p2p/node.key
+      - --p2p.peerstore.path=/data/peerstore
+      - --p2p.discovery.path=/data/discovery
+      - --rpc.addr=0.0.0.0
+      - --rpc.port=9545
+    ports:
+      - 127.0.0.1:29545:9545
+    volumes:
+      - *deployer
+      - *l1chain
+      - *verifierjwt
+      - ../../../.devnet/l2/verifier/p2p.key:/p2p/node.key:ro
+      - ../../../.devnet/l2/verifier/op-node:/data

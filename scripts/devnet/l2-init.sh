@@ -1,25 +1,30 @@
 #!/usr/bin/env bash
-# Prepares the runtime folders of the L2 sequencer and its engine API secret, once, and
-# checks that the batcher key exists and only its owner can read it. With --reset,
-# deletes the sequencer's chain data and secret; the role keys and the contract
-# deployment are kept.
+# Prepares the runtime folders of the L2 sequencer and verifier: one engine API secret
+# per op-node and op-reth pair and one peer-to-peer node key per op-node, each created
+# once with mode 600, the L1 chain config for op-node, and the verifier's static peer
+# address. Checks that the role keys mounted into containers exist and only their owner
+# can read them. With --reset, deletes the chain data and secrets of both nodes; the
+# role keys and the contract deployment are kept.
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
-dir="$root/.devnet/l2/sequencer"
+seq="$root/.devnet/l2/sequencer"
+ver="$root/.devnet/l2/verifier"
 deployer="$root/.devnet/l2/deployer"
 keys="$root/.devnet/l2/keys"
 
 remove_state() {
-  case "$dir" in
-    */.devnet/l2/sequencer) rm -rf "$dir" ;;
-    *) echo "l2-init: refusing to delete $dir"; exit 1 ;;
-  esac
+  for d in "$seq" "$ver"; do
+    case "$d" in
+      */.devnet/l2/sequencer | */.devnet/l2/verifier) rm -rf "$d" ;;
+      *) echo "l2-init: refusing to delete $d"; exit 1 ;;
+    esac
+  done
 }
 
 if [ "${1:-}" = "--reset" ]; then
   remove_state
-  echo "l2-init: removed .devnet/l2/sequencer (keys and deployment kept)"
+  echo "l2-init: removed .devnet/l2/sequencer and .devnet/l2/verifier (keys and deployment kept)"
   exit 0
 fi
 
@@ -27,15 +32,32 @@ for f in genesis.json rollup.json; do
   [ -f "$deployer/$f" ] || { echo "l2-init: no $f; run make l2-deploy first"; exit 1; }
 done
 
-mkdir -p "$dir/op-reth" "$dir/op-node"
-chmod 700 "$dir"
+mode() { stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"; }
+want_mode() {
+  local perm
+  perm="$(mode "$1")"
+  [ "$perm" = "$2" ] || { echo "l2-init: $1 has mode $perm, want $2"; exit 1; }
+}
+# A secret that is created once and never replaced: 32 random bytes as hex, mode 600.
+secret_once() {
+  if [ ! -f "$1" ]; then
+    (umask 077 && openssl rand -hex 32 > "$1")
+    echo "l2-init: created $2"
+  fi
+  want_mode "$1" 600
+}
+
+for d in "$seq" "$ver"; do
+  mkdir -p "$d/op-reth" "$d/op-node"
+  chmod 700 "$d"
+done
 
 # op-node needs the L1 chain config: the `config` object of the L1 genesis, not the whole
 # file. op-node decodes it strictly, and the genesis generator still writes fields that
 # go-ethereum has removed (for example terminalTotalDifficultyPassed). Only the fields of
 # go-ethereum's ChainConfig at commit 3dee18e7108c, the version op-node v1.21.0 is built
 # on, are kept; anything dropped is printed. Rewritten on every run so it always matches
-# the running L1. Recheck this list when op-node is upgraded.
+# the running L1. Recheck this list when op-node is upgraded. Both op-nodes read it.
 l1_genesis="$root/.devnet/l1/genesis/metadata/genesis.json"
 [ -f "$l1_genesis" ] || { echo "l2-init: no L1 genesis; run make l1-up first"; exit 1; }
 known='["chainId","homesteadBlock","daoForkBlock","daoForkSupport","eip150Block","eip155Block",
@@ -48,25 +70,32 @@ known='["chainId","homesteadBlock","daoForkBlock","daoForkSupport","eip150Block"
 jq -e '.config' "$l1_genesis" >/dev/null || { echo "l2-init: $l1_genesis has no config object"; exit 1; }
 dropped="$(jq -r --argjson known "$known" '.config | keys - $known | join(" ")' "$l1_genesis")"
 jq --argjson known "$known" '.config | with_entries(select(.key as $k | $known | index($k)))' \
-  "$l1_genesis" > "$dir/l1-chain-config.json"
+  "$l1_genesis" > "$seq/l1-chain-config.json"
 if [ -n "$dropped" ]; then
   echo "l2-init: L1 chain config for op-node; dropped fields op-node does not know: $dropped"
 fi
 
-# One secret per op-node and op-reth pair, created once, readable by the owner only.
-if [ ! -f "$dir/jwt.hex" ]; then
-  (umask 077 && openssl rand -hex 32 > "$dir/jwt.hex")
-  echo "l2-init: created the engine API secret"
-fi
-mode() { stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"; }
-perm="$(mode "$dir/jwt.hex")"
-[ "$perm" = "600" ] || { echo "l2-init: $dir/jwt.hex has mode $perm, want 600"; exit 1; }
+# One engine API secret per pair: a secret shared across pairs would let one node's
+# credentials drive the other engine.
+secret_once "$seq/jwt.hex" "the sequencer engine API secret"
+secret_once "$ver/jwt.hex" "the verifier engine API secret"
 
-# The batcher container mounts its key as a secret file. Refuse a missing key or one that
-# others can read, the same rule make l2-keys applies; never fix the mode silently.
-[ -f "$keys/batcher.key" ] || { echo "l2-init: no batcher key; run make l2-keys first"; exit 1; }
-perm="$(mode "$keys")"
-[ "$perm" = "700" ] || { echo "l2-init: $keys has mode $perm, want 700"; exit 1; }
-perm="$(mode "$keys/batcher.key")"
-[ "$perm" = "600" ] || { echo "l2-init: $keys/batcher.key has mode $perm, want 600"; exit 1; }
-echo "l2-init: ready"
+# One peer-to-peer node key per op-node. Fixed keys give fixed peer IDs, so the verifier
+# can be given the sequencer's full address before either node starts.
+secret_once "$seq/p2p.key" "the sequencer peer-to-peer key"
+secret_once "$ver/p2p.key" "the verifier peer-to-peer key"
+seq_peer="$(cd "$root" && go run ./cmd/l2-peer-id "$seq/p2p.key")"
+ver_peer="$(cd "$root" && go run ./cmd/l2-peer-id "$ver/p2p.key")"
+printf 'OP_NODE_P2P_STATIC=/dns4/op-node/tcp/9222/p2p/%s\n' "$seq_peer" > "$ver/p2p.env"
+printf '%s\n' "$seq_peer" > "$seq/peer-id"
+printf '%s\n' "$ver_peer" > "$ver/peer-id"
+
+# Role keys mounted as secret files: the batcher key into op-batcher, the sequencer key
+# into the sequencer op-node. Refuse a missing key or one that others can read, the same
+# rule make l2-keys applies; never fix the mode silently.
+want_mode "$keys" 700
+for role in batcher sequencer; do
+  [ -f "$keys/$role.key" ] || { echo "l2-init: no $role key; run make l2-keys first"; exit 1; }
+  want_mode "$keys/$role.key" 600
+done
+echo "l2-init: ready; sequencer peer $seq_peer, verifier peer $ver_peer"
