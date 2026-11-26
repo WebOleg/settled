@@ -1,0 +1,129 @@
+# Runbooks
+
+One section per alert in
+[infra/observability/alerts.yml](../infra/observability/alerts.yml), headed by the
+alert's name; `make obs-check` fails if a rule has no section here. Each says what the
+alert means, what to look at and what to do. The commands are for this devnet.
+
+Logs of one service: `docker compose -f infra/devnet/l2/compose.yaml logs --tail 100
+<service>` (or `l1/compose.yaml`). The dashboard is at `http://127.0.0.1:3000`, the
+alerts at `http://127.0.0.1:9093`, and `make status` shows everything at once.
+
+## L2BlocksStalled
+
+The sequencer makes fewer than 25 L2 blocks a minute; normally 30, one every 2 s. New
+transactions are not included.
+
+Look at:
+- `make status`: are `op-node` and `op-reth` running, does the unsafe head move.
+- Logs of `op-node` and `op-reth`: engine API errors between them.
+- Is the L1 advancing (`make l1-check`)? The sequencer stops when its L1 origin falls
+  too far behind.
+
+Do:
+- A stopped service: `make l2-up` starts it with its data.
+- The L1 stalled: see [L1FinalityStalled](#l1finalitystalled).
+
+## BatchesNotReachingL1
+
+Three minutes or more of L2 blocks are not confirmed by the L1: the unsafe head minus the
+safe head, at 2 s a block. Normally under one minute. Until the L1 confirms them, these
+blocks are not safe, and everything that waits for safety waits.
+
+Look at:
+- `make status`: is `op-batcher` running. TargetDown for `op-batcher` fires with it when
+  the batcher is down.
+- Dashboard, Details: batcher: blocks waiting to be batched grow, confirmed batches per
+  minute drop to zero, the blob base fee jumps.
+- Logs of `op-batcher`: failed or underpriced transactions, insufficient funds.
+
+Do:
+- A stopped batcher: `make l2-up`. It posts every block since the safe head; nothing is
+  lost.
+- No funds: see [OperatorFundsLow](#operatorfundslow).
+- The L1 does not include its transactions: see [L1FinalityStalled](#l1finalitystalled).
+
+`make alert-drill` stops the batcher on purpose and shows this alert fire and clear.
+
+## VerifierBehind
+
+The verifier is 5 or more blocks behind the sequencer's unsafe head. The independent
+copy of the chain is late: its RPC and the states the proposer reads from it are old.
+
+Look at:
+- `make l2-check`: the verifier's peer is connected and its blocks match the sequencer's.
+- Dashboard, Details: L2: op-node peers at zero.
+- Logs of `verifier-op-node`.
+
+Do:
+- Peer lost: `docker compose -f infra/devnet/l2/compose.yaml restart verifier-op-node`.
+  It catches up from the peer, and derives every safe block from the L1 in any case.
+- Its blocks differ from the sequencer's: this is an incident, not a delay. Trust
+  neither until the cause is known.
+
+## ProposalsStalled
+
+The proposer has not posted a state to the L1 for 15 minutes; normally about every 6.
+Withdrawals cannot be proven against newer states and wait. No funds are at risk.
+
+Look at:
+- `make status`: is `op-proposer` running, its balance.
+- The proposer posts only finalized L2 states. If BatchesNotReachingL1 or
+  L1FinalityStalled fires, finality has stopped and so have proposals: fix that first.
+- Logs of `op-proposer`. `make l2-games` checks the games posted so far.
+- `failed to estimate gas ... reason: 0x014f6fe5` repeated every 2 s is
+  `GameAlreadyExists(bytes32)`: the finalized state has not moved, so the proposer keeps
+  trying to post the game it already posted. No transaction is sent and nothing is
+  spent; it stops when finality moves again.
+
+Do:
+- A stopped proposer: `make l2-up`.
+- No funds: see [OperatorFundsLow](#operatorfundslow).
+
+## L1FinalityStalled
+
+The L1 finalized block is 160 or more blocks (5 epochs) behind its head; normally 64 to
+96. Nothing on the L2 becomes finalized, so proposals and withdrawals stop.
+
+Look at:
+- `make l1-check`.
+- Dashboard, Details: L1: validator duties. This devnet has one validator with all the
+  stake; when it stops attesting, finality stops.
+- Logs of `beacon` and `validator`.
+
+On this devnet the usual cause is the computer sleeping: Docker pauses, the validator
+misses its slots and finality stops. After wake it resumes within a few epochs, and
+op-node picks up the new finalized block at its next L1 poll, every 6.4 minutes; the
+L2 finalized head, then proposals, follow.
+
+Do:
+- A stopped L1 service: `make l1-up` starts it with its data.
+- On a public L1 finality is outside the operator's control. The L2 keeps running on safe
+  blocks, and whatever waits for finality waits.
+
+## OperatorFundsLow
+
+The batcher or the proposer holds less than 1 ETH on the L1. When it runs out, batches
+or proposals stop.
+
+Look at:
+- `make status`: the balances.
+- Dashboard, Details: proposer and funds: how fast they fall.
+
+Do:
+- `make l2-fund` tops both up. In production the top-up comes from a treasury account
+  with a limit, and the threshold is set from the daily spend.
+
+## TargetDown
+
+A client of the devnet has not answered Prometheus for a minute. Its own metrics are
+gone, so the tiles that read them show no data rather than red; this alert is what
+notices. The `job` and `node` labels name the client.
+
+Look at:
+- `make status`: which service is not running.
+- Its logs: why it stopped, or why it does not start.
+
+Do:
+- `make l1-up` or `make l2-up` starts it with its data.
+- It fails again on start: the logs say why; fix that before restarting it again.

@@ -1,9 +1,9 @@
 # Design: observability
 
 How the devnet is watched and why. This file covers what exists in the repository:
-metrics from every client, collected by Prometheus, and a dashboard of the chain in
-Grafana. Alerts with runbooks and load tests are added in the next steps of stage 3 and
-described here as they land.
+metrics from every client, collected by Prometheus, a dashboard of the chain in Grafana,
+and alerts with runbooks, sent to Alertmanager. Load tests are the next step of stage 3
+and are described here when they land.
 
 ## Goal
 
@@ -53,13 +53,13 @@ dashboard follows three rules:
    aggregates it to one series, so it can never split into several numbers.
 2. Everything else sits below in rows that stay closed until opened. Each tile says
    which row to open when it is red.
-3. The red line of a tile is the threshold of the alert for the same question (next
-   step of stage 3), so a red tile, an alert and its runbook are one thing.
+3. The red line of a tile is the threshold of the alert for the same question, so a red
+   tile, an alert and its runbook are one thing (see Alerts).
 
 | Tile | Green when | Red means |
 |---|---|---|
 | L2 makes blocks | The sequencer makes about 30 blocks a minute (one every 2 s). | Fewer than 25. |
-| Batches reach the L1 | The last batch was confirmed on the L1 less than 2 minutes ago; a batch goes out every 30 s. | Older. |
+| Batches reach the L1 | Less than 3 minutes of L2 blocks are not yet confirmed by the L1 (unsafe head minus safe head, 2 s a block); normally under one, as a batch goes out every 30 s. | Batches are not reaching the L1. |
 | Verifier keeps up | The verifier is fewer than 5 blocks behind the sequencer. | It has fallen behind. |
 | Proposals are made | The proposer posted a state to the L1 less than 15 minutes ago; it does about every 6. | Older. |
 | L1 finalizes | The L1 finalized block is fewer than 160 blocks (5 epochs) behind its head; normally about 64 to 96. | Finality has stalled. |
@@ -90,3 +90,52 @@ empty panel fails the check, so a renamed metric is noticed at once. A stopped s
 fails it too: the first overview checked only the value now, while the screen showed 30
 minutes, and three tiles split into a live number and the last numbers of series left
 behind by the label rename.
+
+The first version of the batches tile read the batcher's own metric, the time of its
+last confirmed transaction. When the batcher stops, that metric stops with it, the query
+returns nothing and the tile shows no data instead of red. The tile now reads the safe
+head from op-node, which keeps reporting while batches stop: it measures the effect,
+not the batcher's report about itself.
+
+## Alerts
+
+Prometheus evaluates the rules in
+[alerts.yml](../../infra/observability/alerts.yml) every 5 seconds and sends what fires
+to Alertmanager v0.35.1, pinned by digest, at `http://127.0.0.1:9093`. What each alert
+means and what to do is in [docs/runbooks.md](../runbooks.md).
+
+| Alert | Tile | Fires when, for 1 minute |
+|---|---|---|
+| L2BlocksStalled | L2 makes blocks | Fewer than 25 blocks a minute |
+| BatchesNotReachingL1 | Batches reach the L1 | 3 minutes or more of L2 not confirmed by the L1 |
+| VerifierBehind | Verifier keeps up | 5 or more blocks behind |
+| ProposalsStalled | Proposals are made | No proposal for 15 minutes |
+| L1FinalityStalled | L1 finalizes | Finalized 160 or more blocks behind the head |
+| OperatorFundsLow | Operators have funds | Batcher or proposer under 1 ETH |
+| TargetDown | none | A client does not answer the scrape |
+
+| Choice | Reason |
+|---|---|
+| One rule per tile, the same query and red line | What is red on screen is what pages, and the reverse. `make obs-check` reads both files and fails if a rule's query is not its tile's query compared with the tile's red line. |
+| Held for 1 minute | One slow scrape or a late batch does not page anyone; a real stall still does within a minute of the red line. |
+| TargetDown | A stopped client takes its metrics with it, and a query over missing metrics returns nothing, not red. Only `up == 0` sees that. |
+| Every rule links a section of `docs/runbooks.md` | An alert without a known next step wakes someone up for nothing. `make obs-check` fails on a rule whose section is missing. |
+| One receiver that keeps the alerts, nobody paged | The devnet has no on-call. In production the same rules route `severity=page` to the on-call rotation; only `alertmanager.yml` changes. |
+
+`make obs-check` also shows that Prometheus loaded and evaluates every rule, sends to
+Alertmanager, and that no alert fires on a healthy devnet. `make alert-drill` proves the
+path end to end rather than only that the rules load. It
+stops op-batcher, waits for BatchesNotReachingL1 to fire in Prometheus and arrive in
+Alertmanager, checks that TargetDown fires for the batcher, then starts it again and
+waits until both clear. The batcher is started again on any exit, and nothing is lost:
+it posts every block since the safe head when it is back.
+
+The first run of these checks stopped on a real stall. The computer had slept for about
+three hours: Docker was paused, the L1 validator missed its slots, and the L1 finalized
+block stayed at 946. The L2 finalized head stayed at 3605 with it, the proposer had no
+new state to post (it kept retrying the last one, which the factory refused as
+`GameAlreadyExists`), and the proposals tile was red with ProposalsStalled pending.
+After wake the L1 finalized again and op-node took the new block at its next L1 poll.
+Prometheus slept with the devnet, so nothing could fire during the sleep; in production
+the monitoring runs apart from what it watches. The runbooks of ProposalsStalled and
+L1FinalityStalled name this cause.

@@ -1,7 +1,8 @@
 # Observability for the devnet. Prometheus scrapes every client of the L1 and the L2
-# over their Docker networks; Grafana shows the dashboards in this repository. The
-# metrics ports are not published; Prometheus and Grafana are, on 127.0.0.1 only. Images
-# are pinned by digest.
+# over their Docker networks and evaluates the alert rules; Alertmanager receives the
+# alerts; Grafana shows the dashboards in this repository. The metrics ports are not
+# published; Prometheus, Alertmanager and Grafana are, on 127.0.0.1 only. Images are
+# pinned by digest.
 name: settled-obs
 
 networks:
@@ -15,6 +16,7 @@ networks:
 
 volumes:
   prometheus: {}
+  alertmanager: {}
   grafana: {}
 
 services:
@@ -34,7 +36,21 @@ services:
       - 127.0.0.1:9090:9090
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus:/prometheus
+
+  alertmanager:
+    image: prom/alertmanager:v0.35.1@sha256:4e3d029e69c7f61dd53a2b31a3dc427a2b81736cffca185c0854075e07969e36
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.listen-address=0.0.0.0:9093
+    ports:
+      - 127.0.0.1:9093:9093
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager:/alertmanager
 
   grafana:
     image: grafana/grafana:13.3.2@sha256:81556409ba48b2b922e0adb69a2511337d8ba7578f11962eefa6149a2d815101

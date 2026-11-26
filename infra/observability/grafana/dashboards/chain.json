@@ -99,7 +99,7 @@
       "type": "stat",
       "id": 3,
       "title": "Batches reach the L1",
-      "description": "Green: the last batch was confirmed on the L1 less than 2 minutes ago; a batch goes out every 30 s. Red: older. If red, open Details: batcher.",
+      "description": "How much of the L2 the L1 has not confirmed yet: the unsafe head minus the safe head, at 2 s a block. Green: less than 3 minutes; normally under one, as a batch goes out every 30 s. Red: batches are not reaching the L1. If red, open Details: batcher.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -117,7 +117,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "time() - max(op_batcher_default_txmgr_last_confirm_unix{chain=\"l2\"})",
+          "expr": "(max(op_node_default_refs_number{chain=\"l2\",node=\"sequencer\",layer=\"l2\",type=\"l2_unsafe\"}) - max(op_node_default_refs_number{chain=\"l2\",node=\"sequencer\",layer=\"l2\",type=\"l2_safe\"})) * 2",
           "legendFormat": "",
           "range": false,
           "instant": true
@@ -136,7 +136,7 @@
               },
               {
                 "color": "red",
-                "value": 120
+                "value": 180
               }
             ]
           },
@@ -165,7 +165,7 @@
       "type": "stat",
       "id": 4,
       "title": "Verifier keeps up",
-      "description": "Green: the verifier is fewer than 5 blocks behind the sequencer. Red: it has fallen behind. If red, open Details: L2.",
+      "description": "Green: the verifier is fewer than 5 blocks behind the sequencer. Red: it has fallen behind. If red, open Details: L2. The two heads are scraped a moment apart, so the verifier can look one block ahead; that reads as 0.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -183,7 +183,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max(op_node_default_refs_number{chain=\"l2\",node=\"sequencer\",layer=\"l2\",type=\"l2_unsafe\"}) - max(op_node_default_refs_number{chain=\"l2\",node=\"verifier\",layer=\"l2\",type=\"l2_unsafe\"})",
+          "expr": "clamp_min(max(op_node_default_refs_number{chain=\"l2\",node=\"sequencer\",layer=\"l2\",type=\"l2_unsafe\"}) - max(op_node_default_refs_number{chain=\"l2\",node=\"verifier\",layer=\"l2\",type=\"l2_unsafe\"}), 0)",
           "legendFormat": "blocks behind",
           "range": false,
           "instant": true
@@ -191,7 +191,7 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "suffix: blocks",
+          "unit": "suffix: behind",
           "decimals": 0,
           "thresholds": {
             "mode": "absolute",
@@ -323,7 +323,7 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "suffix: blocks",
+          "unit": "suffix: behind",
           "decimals": 0,
           "thresholds": {
             "mode": "absolute",

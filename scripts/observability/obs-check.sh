@@ -2,15 +2,19 @@
 # Shows that Prometheus scrapes every client of the devnet: each of the nine targets is
 # up, and each job reports series. Then Grafana: it is healthy, the admin password from
 # obs-init.sh works, an anonymous visitor can read the dashboard but not change it, and
-# every query of every panel returns data and shows only live series. Waits up to 60 s for
-# the first scrape.
+# every query of every panel returns data and shows only live series. Then the alerts:
+# every rule is loaded, matches its tile and has a runbook, Alertmanager receives them,
+# and none fires on a healthy devnet. Waits up to 60 s for the first scrape.
 set -euo pipefail
 
 PROM="http://127.0.0.1:9090"
 GRAFANA="http://127.0.0.1:3000"
+ALERTMANAGER="http://127.0.0.1:9093"
 EXPECTED_TARGETS=9
 root="$(git rev-parse --show-toplevel)"
 DASHBOARD="$root/infra/observability/grafana/dashboards/chain.json"
+RULES="$root/infra/observability/alerts.yml"
+RUNBOOKS="$root/docs/runbooks.md"
 PASSWORD_FILE="$root/.devnet/observability/grafana-admin.txt"
 
 fail() { echo "obs-check: FAIL: $*"; exit 1; }
@@ -37,7 +41,9 @@ total="$(printf '%s' "$targets" | jq '.data.activeTargets | length')"
 [ "$up" -eq "$EXPECTED_TARGETS" ] || fail "$up of $total targets up"
 echo "targets          $up of $total up"
 
-series="$(query 'count by (job) ({__name__=~".+"})')" || fail "query failed"
+# Series that Prometheus makes itself (ALERTS, ALERTS_FOR_STATE from the alert rules)
+# have no job; only scraped series are counted here.
+series="$(query 'count by (job) ({__name__=~".+", job!=""})')" || fail "query failed"
 printf '%s' "$series" | jq -r '.data.result[] | "series           \(.metric.job): \(.value[1])"' | sort
 jobs="$(printf '%s' "$series" | jq '.data.result | length')"
 [ "$jobs" -eq 7 ] || fail "$jobs jobs report series, want 7"
@@ -133,5 +139,52 @@ while IFS=$'\t' read -r title expr steps unit decimals; do
   [ "$colour" = "green" ] || red=$((red + 1))
 done < <(jq -r '.panels[] | select(.type == "stat") | [.title, .targets[0].expr, (.fieldConfig.defaults.thresholds.steps | tojson), .fieldConfig.defaults.unit, (.fieldConfig.defaults.decimals // 0)] | @tsv' "$DASHBOARD")
 echo "overview         $((tiles - red)) of $tiles tiles green"
+
+# Alerts. The rules file is read as written: one line per field, as alerts.yml keeps it.
+rules="$(awk '
+  function flush() { if (name != "") print name "\t" (tile == "" ? "-" : tile) "\t" expr "\t" runbook }
+  /^ *- alert: / { flush(); name = $0; sub(/^ *- alert: /, "", name); tile = ""; expr = ""; runbook = "" }
+  /^ *expr: / { expr = $0; sub(/^ *expr: /, "", expr) }
+  /^ *tile: / { tile = $0; sub(/^ *tile: /, "", tile) }
+  /^ *runbook: / { runbook = $0; sub(/^ *runbook: /, "", runbook) }
+  END { flush() }' "$RULES")"
+[ -n "$rules" ] || fail "no rules in $RULES"
+count="$(printf '%s\n' "$rules" | wc -l | tr -d ' ')"
+
+# Every tile has a rule with the tile's query and its red line, nothing else.
+while IFS=$'\t' read -r title want; do
+  got="$(printf '%s\n' "$rules" | awk -F'\t' -v t="$title" '$2 == t { print $3 }')"
+  [ -n "$got" ] || fail "tile '$title' has no alert rule"
+  [ "$got" = "$want" ] || fail "the rule of tile '$title' differs from the tile: rule '$got', tile '$want'"
+done < <(jq -r '.panels[] | select(.type == "stat") | .fieldConfig.defaults.thresholds.steps as $s
+  | [.title, (.targets[0].expr + (if $s[0].color == "red" then " < " else " >= " end) + ($s[1].value | tostring))] | @tsv' "$DASHBOARD")
+
+# Every rule has a runbook section, headed by the alert's name.
+while IFS=$'\t' read -r name _ _ runbook; do
+  want="docs/runbooks.md#$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
+  [ "$runbook" = "$want" ] || fail "rule $name links runbook '$runbook', want '$want'"
+  grep -qx "## $name" "$RUNBOOKS" || fail "docs/runbooks.md has no section '## $name'"
+done <<< "$rules"
+echo "rules            $count rules in alerts.yml; each tile has the rule with its query and red line; each rule has a runbook"
+
+loaded="$(curl -sf -m 5 "$PROM/api/v1/rules?type=alert")" || fail "Prometheus does not return its rules"
+names_file="$(printf '%s\n' "$rules" | cut -f1 | sort | tr '\n' ' ')"
+names_loaded="$(printf '%s' "$loaded" | jq -r '.data.groups[].rules[].name' | sort | tr '\n' ' ')"
+[ "$names_file" = "$names_loaded" ] || fail "Prometheus loaded rules '$names_loaded', alerts.yml has '$names_file'"
+bad="$(printf '%s' "$loaded" | jq -r '[.data.groups[].rules[] | select(.health != "ok") | .name] | join(" ")')"
+[ -z "$bad" ] || fail "rules that do not evaluate: $bad"
+echo "prometheus       evaluates all $count rules"
+
+curl -sf -m 5 "$ALERTMANAGER/-/ready" >/dev/null || fail "Alertmanager does not answer on $ALERTMANAGER"
+ams="$(curl -sf -m 5 "$PROM/api/v1/alertmanagers" | jq '.data.activeAlertmanagers | length')"
+[ "$ams" -eq 1 ] || fail "Prometheus sends alerts to $ams Alertmanagers, want 1"
+echo "alertmanager     ready at $ALERTMANAGER; Prometheus sends to it"
+
+alerts="$(curl -sf -m 5 "$PROM/api/v1/alerts")" || fail "Prometheus does not return its alerts"
+pending="$(printf '%s' "$alerts" | jq -r '[.data.alerts[] | select(.state == "pending") | .labels.alertname] | unique | join(" ")')"
+firing="$(printf '%s' "$alerts" | jq -r '[.data.alerts[] | select(.state == "firing") | .labels.alertname] | unique | join(" ")')"
+[ -z "$pending" ] || echo "pending          $pending"
+[ -z "$firing" ] || fail "alerts firing on the devnet: $firing"
+echo "alerts           none firing"
 
 echo "obs-check: ok"

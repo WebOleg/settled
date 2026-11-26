@@ -175,9 +175,18 @@ account for every wei on both sides, and a withdrawal cannot be paid twice. Why 
 make obs-check
 ```
 
-Prometheus scrapes all nine clients of both layers every 5 seconds, at
-`http://127.0.0.1:9090`, and Grafana shows the chain at `http://127.0.0.1:3000`:
-heads and safety on both nodes, the verifier, batches, proposals and operator balances. What is collected and why is in
+Grafana at `http://127.0.0.1:3000` opens on six questions, each green or red: the L2
+makes blocks, batches reach the L1, the verifier keeps up, proposals are made, the L1
+finalizes, operators have funds. The details sit below, closed until needed. Each red
+line is an alert rule in Prometheus (`http://127.0.0.1:9090`), sent to Alertmanager
+(`http://127.0.0.1:9093`), with a runbook in [docs/runbooks.md](docs/runbooks.md).
+
+```sh
+make alert-drill
+```
+
+stops the batcher, shows its alert fire and reach Alertmanager, starts the batcher and
+shows the alert clear. What is collected and why is in
 [docs/design/observability.md](docs/design/observability.md); the stack is in
 [infra/observability/README.md](infra/observability/README.md).
 

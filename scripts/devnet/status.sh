@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # One look at the whole devnet, without waiting: which services run, the L1 heads, the
-# L2 heads on the sequencer and the verifier, the number of dispute games, and the L1
-# balances of the accounts that pay for batches and proposals. Exits 1 if a service is
+# L2 heads on the sequencer and the verifier, the scrape targets and firing alerts, the
+# number of dispute games, and the L1 balances of the accounts that pay for batches and
+# proposals. Exits 1 if a service is
 # down or does not answer.
 set -euo pipefail
 
@@ -64,6 +65,9 @@ if [ -n "$prom" ]; then
   printf '  %-12s %s of %s targets up (http://127.0.0.1:9090)\n' "prometheus" \
     "$(printf '%s' "$prom" | jq '[.data.activeTargets[] | select(.health == "up")] | length')" \
     "$(printf '%s' "$prom" | jq '.data.activeTargets | length')"
+  firing="$(curl -sf -m 3 'http://127.0.0.1:9090/api/v1/alerts' 2>/dev/null \
+    | jq -r '[.data.alerts[] | select(.state == "firing") | .labels.alertname] | unique | join(", ")' 2>/dev/null || echo "?")"
+  printf '  %-12s %s (http://127.0.0.1:9093)\n' "alerts" "${firing:-none firing}"
 else
   echo "  prometheus   not running (make obs-up)"
 fi

@@ -1,12 +1,13 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help up down status reset obs-up obs-check obs-down obs-password check check-docs check-images check-shell check-secrets check-go l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-logs l2-down l2-reset
+.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-logs l2-down l2-reset
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
 OBS := docker compose -f infra/observability/compose.yaml
 PROM_IMAGE := prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
+AM_IMAGE := prom/alertmanager:v0.35.1@sha256:4e3d029e69c7f61dd53a2b31a3dc427a2b81736cffca185c0854075e07969e36
 STEP := $(MAKE) --no-print-directory
 
 help: ## List the targets
@@ -123,15 +124,19 @@ l2-reset: ## Stop the L2 services and delete the chain data (keys and deployment
 	@$(L2) down
 	@scripts/devnet/l2-init.sh --reset
 
-obs-up: ## Start Prometheus and Grafana; needs l1-up and l2-up
+obs-up: ## Start Prometheus, Alertmanager and Grafana; needs l1-up and l2-up
 	@scripts/observability/obs-init.sh
 	@docker run --rm --entrypoint promtool -v "$(CURDIR)/infra/observability:/c:ro" $(PROM_IMAGE) check config /c/prometheus.yml
-	@$(OBS) up -d --quiet-pull
+	@docker run --rm --entrypoint amtool -v "$(CURDIR)/infra/observability:/c:ro" $(AM_IMAGE) check-config /c/alertmanager.yml
+	@$(OBS) up -d --quiet-pull --remove-orphans
 
-obs-check: ## Show that all nine clients are scraped and every dashboard panel has data
+obs-check: ## Show that all nine clients are scraped, every panel has data and every alert rule matches its tile
 	@scripts/observability/obs-check.sh
 
-obs-down: ## Stop Prometheus and Grafana and keep their data
+alert-drill: ## Stop the batcher, see its alerts fire and reach Alertmanager, start it, see them clear
+	@scripts/observability/alert-drill.sh
+
+obs-down: ## Stop Prometheus, Alertmanager and Grafana and keep their data
 	@$(OBS) down
 
 obs-password: ## Copy the Grafana admin password to the clipboard, without printing it

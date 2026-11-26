@@ -1,0 +1,12 @@
+# Where alerts go. On the devnet nobody is paged: Alertmanager groups the alerts it gets
+# from Prometheus and keeps them, visible at http://127.0.0.1:9093. In production the
+# route would send severity=page to the on-call rotation; the rules do not change.
+route:
+  receiver: devnet
+  group_by: [alertname]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h
+
+receivers:
+  - name: devnet

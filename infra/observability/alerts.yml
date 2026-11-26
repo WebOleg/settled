@@ -1,0 +1,76 @@
+# Alert rules. Each rule but the last is an overview tile of the chain dashboard: the
+# same query, the same red line, held for a minute so a single slow scrape does not page.
+# make obs-check fails if a rule and its tile differ. A client that stops takes its own
+# metrics with it, and a query over metrics that are gone returns nothing, so no tile
+# turns red; TargetDown covers that. Each rule links its runbook in docs/runbooks.md.
+groups:
+  - name: chain
+    rules:
+      - alert: L2BlocksStalled
+        expr: max(rate(op_node_default_refs_number{chain="l2",node="sequencer",layer="l2",type="l2_unsafe"}[1m])) * 60 < 25
+        for: 1m
+        labels:
+          severity: page
+          tile: L2 makes blocks
+        annotations:
+          summary: The sequencer makes fewer than 25 L2 blocks a minute.
+          runbook: docs/runbooks.md#l2blocksstalled
+
+      - alert: BatchesNotReachingL1
+        expr: (max(op_node_default_refs_number{chain="l2",node="sequencer",layer="l2",type="l2_unsafe"}) - max(op_node_default_refs_number{chain="l2",node="sequencer",layer="l2",type="l2_safe"})) * 2 >= 180
+        for: 1m
+        labels:
+          severity: page
+          tile: Batches reach the L1
+        annotations:
+          summary: Three minutes or more of L2 blocks are not yet confirmed by the L1.
+          runbook: docs/runbooks.md#batchesnotreachingl1
+
+      - alert: VerifierBehind
+        expr: clamp_min(max(op_node_default_refs_number{chain="l2",node="sequencer",layer="l2",type="l2_unsafe"}) - max(op_node_default_refs_number{chain="l2",node="verifier",layer="l2",type="l2_unsafe"}), 0) >= 5
+        for: 1m
+        labels:
+          severity: page
+          tile: Verifier keeps up
+        annotations:
+          summary: The verifier is 5 or more blocks behind the sequencer.
+          runbook: docs/runbooks.md#verifierbehind
+
+      - alert: ProposalsStalled
+        expr: time() - max(op_proposer_default_txmgr_last_confirm_unix{chain="l2"}) >= 900
+        for: 1m
+        labels:
+          severity: page
+          tile: Proposals are made
+        annotations:
+          summary: The proposer has not posted a state to the L1 for 15 minutes.
+          runbook: docs/runbooks.md#proposalsstalled
+
+      - alert: L1FinalityStalled
+        expr: max(chain_head_block{chain="l1"}) - max(chain_head_finalized{chain="l1"}) >= 160
+        for: 1m
+        labels:
+          severity: page
+          tile: L1 finalizes
+        annotations:
+          summary: The L1 finalized block is 160 or more blocks behind its head.
+          runbook: docs/runbooks.md#l1finalitystalled
+
+      - alert: OperatorFundsLow
+        expr: min(op_batcher_default_balance{chain="l2"} or op_proposer_default_balance{chain="l2"}) < 1
+        for: 1m
+        labels:
+          severity: page
+          tile: Operators have funds
+        annotations:
+          summary: The batcher or the proposer holds less than 1 ETH on the L1.
+          runbook: docs/runbooks.md#operatorfundslow
+
+      - alert: TargetDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: A client of the devnet does not answer Prometheus.
+          runbook: docs/runbooks.md#targetdown
