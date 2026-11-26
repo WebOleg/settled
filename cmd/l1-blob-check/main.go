@@ -15,7 +15,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -24,6 +23,7 @@ import (
 
 	"github.com/WebOleg/settled/internal/blobtx"
 	"github.com/WebOleg/settled/internal/devkeys"
+	"github.com/WebOleg/settled/internal/txwait"
 )
 
 const mnemonicEnv = "SETTLED_DEVNET_MNEMONIC"
@@ -89,7 +89,7 @@ func run(ctx context.Context, rpcURL string, index uint32) error {
 	}
 	fmt.Printf("sent             %s, blob hash %s\n", tx.Hash(), tx.BlobHashes()[0])
 
-	receipt, err := waitForReceipt(ctx, client, tx.Hash())
+	receipt, err := txwait.Receipt(ctx, client, tx.Hash())
 	if err != nil {
 		return err
 	}
@@ -158,23 +158,4 @@ func signedBlobTx(ctx context.Context, client *ethclient.Client, key *ecdsa.Priv
 		return nil, fmt.Errorf("sign blob transaction: %w", err)
 	}
 	return tx, nil
-}
-
-func waitForReceipt(ctx context.Context, client *ethclient.Client, hash common.Hash) (*types.Receipt, error) {
-	tick := time.NewTicker(2 * time.Second)
-	defer tick.Stop()
-	for {
-		receipt, err := client.TransactionReceipt(ctx, hash)
-		if err == nil {
-			return receipt, nil
-		}
-		if !errors.Is(err, ethereum.NotFound) {
-			return nil, fmt.Errorf("read receipt of %s: %w", hash, err)
-		}
-		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("transaction %s not included in time: %w", hash, ctx.Err())
-		case <-tick.C:
-		}
-	}
 }

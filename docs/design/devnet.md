@@ -1,7 +1,7 @@
 # Design: local devnet
 
 How the local network is built and why. This file covers what exists in the repository:
-the L1. It grows as the L2 is added.
+the L1, and the operator keys of the L2. It grows as the L2 is added.
 
 ## Goal
 
@@ -49,6 +49,37 @@ The Foundry image `ghcr.io/foundry-rs/foundry:v1.10.0` was considered first. Its
 `forge` and `chisel` binaries are about 430 KB each and print nothing, while `anvil` is
 53 MB, so the image was not usable. The `stable` tag pointed to v1.5.1 from December
 2025.
+
+## L2: operator roles and keys
+
+The L2 has one key per role, so that no key holds more power than its job needs. The
+split follows the role fields of the op-deployer intent file.
+
+| Role | Intent field | Can | Balance on L1 |
+|---|---|---|---|
+| `deployer` | none, it signs the deployment | deploy the contracts; holds no role after that | 100 ETH |
+| `superchain-admin` | `SuperchainProxyAdminOwner` | upgrade the superchain contracts | 0 |
+| `guardian` | `SuperchainGuardian` | pause the system in an emergency | 0 |
+| `chain-admin` | `l1ProxyAdminOwner`, `l2ProxyAdminOwner` | upgrade this chain's contracts | 0 |
+| `system-config-owner` | `systemConfigOwner` | change chain parameters such as the gas limit | 0 |
+| `sequencer` | `unsafeBlockSigner` | sign unsafe blocks for peer-to-peer gossip | 0 |
+| `batcher` | `batcher` | post batches to the L1 | 20 ETH |
+| `proposer` | `proposer` | post output roots to the L1 | 20 ETH |
+| `challenger` | `challenger` | dispute invalid output roots | 20 ETH |
+| `fee-recipient` | the four fee vault recipients | receive L2 fees | 0 |
+
+How the keys are handled, in [internal/rolekeys](../../internal/rolekeys):
+
+- `make l2-keys` creates a missing key from `crypto/rand` and keeps every existing one.
+  Files are mode 600 in `.devnet/l2/keys` (mode 700) and are opened with `O_EXCL`, so a
+  key is never replaced, not even by a second run racing the first.
+- A key that others can read is refused. A wrong permission shows up as an error before
+  anything uses the key.
+- Keys are never printed. `addresses.json` in the same folder lists the addresses.
+
+`make l2-fund` tops the four paying accounts up to the balances above from the first
+devnet account, in [internal/funding](../../internal/funding). It sends only the
+difference, so running it again sends nothing to an account that is already funded.
 
 ## Alternatives rejected
 

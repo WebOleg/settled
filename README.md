@@ -14,7 +14,8 @@ Everything runs on one machine and needs no cloud account.
 
 ## Status
 
-Stage 1 is in progress. The local L1 runs; the L2 does not exist yet. This file
+Stage 1 is in progress. The local L1 runs. The L2 does not run yet; its operator keys
+and their funding exist. This file
 describes only what exists and grows with the code.
 
 The rules the code follows are in [ENGINEERING.md](ENGINEERING.md). The plan is in
@@ -32,6 +33,17 @@ A proof-of-stake L1 with geth and Lighthouse, started from its own genesis. Requ
 Docker, curl, jq and Go. Services, endpoints and files are described in
 [infra/devnet/l1/README.md](infra/devnet/l1/README.md); the reasons behind the setup are
 in [docs/design/devnet.md](docs/design/devnet.md).
+
+## L2 operator keys
+
+```sh
+make l2-keys
+make l2-fund
+```
+
+One key per operator role, kept in `.devnet/l2/keys` and readable only by its owner.
+`l2-fund` tops up the accounts that pay gas on the L1. The roles and the rules for the
+keys are in [docs/design/devnet.md](docs/design/devnet.md#l2-operator-roles-and-keys).
 
 ## Checks
 

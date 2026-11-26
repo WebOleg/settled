@@ -49,6 +49,9 @@ exist.
 - `.gitignore` keeps env files, key files and local runtime data out of git.
 - A secret that reaches a commit is treated as leaked: it is rotated, not only removed
   from history.
+- Key files are created readable by their owner only (mode 600, in a directory with
+  mode 700) and are never overwritten. A key file that others can read is refused, not
+  fixed silently.
 
 ## Local checks
 

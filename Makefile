@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help check check-docs check-shell check-secrets check-go l1-up l1-down l1-reset l1-logs l1-check l1-blob-check
+.PHONY: help check check-docs check-shell check-secrets check-go l1-up l1-down l1-reset l1-logs l1-check l1-blob-check l2-keys l2-fund
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 
@@ -47,3 +47,9 @@ l1-down: ## Stop the local L1 and keep its data
 l1-reset: ## Stop the local L1 and delete its data and genesis
 	@$(L1) down
 	@scripts/devnet/l1-init.sh --reset
+
+l2-keys: ## Create the missing L2 operator keys (one per role) and list role addresses
+	@go run ./cmd/l2-keys
+
+l2-fund: ## Top up the L2 operator accounts that pay gas on the local L1
+	@scripts/devnet/l2-fund.sh
