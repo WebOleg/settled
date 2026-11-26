@@ -60,5 +60,23 @@ lists the targets.
 | `check-docs` | [scripts/check-docs.sh](scripts/check-docs.sh) | CRLF line endings, a missing final newline, trailing spaces outside Markdown, an em dash in Markdown, a relative link to a file that does not exist |
 | `check-shell` | shellcheck | any finding in a tracked shell script |
 | `check-secrets` | gitleaks | a secret anywhere in the git history; findings are printed redacted |
+| `check-go` | gofmt, go vet, go test | an unformatted file, a vet finding or a failing test |
 
-The checks were last run with gitleaks 8.30.1 and shellcheck 0.11.0.
+The checks were last run with gitleaks 8.30.1, shellcheck 0.11.0 and Go 1.26.2.
+
+## Go
+
+- One module at the repository root, `github.com/WebOleg/settled`. Commands live in
+  `cmd/<name>`, packages in `internal/<name>`, one job per package.
+- Dependencies are pinned in `go.mod` and `go.sum`. go-ethereum is pinned to the same
+  release as the devnet's execution client.
+- Errors are wrapped with what was being done:
+  `fmt.Errorf("blobtx: compute cell proofs: %w", err)`. Callers branch on sentinel
+  errors with `errors.Is`.
+- Comments say why, not what.
+- Every behaviour has a test, including the bad case. Tests that need a running network
+  are commands run by `make`, not `go test`.
+- Amounts of ETH are `*big.Int` or `uint256.Int` in wei. Never floats.
+- Secrets reach a program through the environment or a file at run time and are never
+  printed. The devnet mnemonic is public, and is still handled this way so the code
+  path is the same one real keys will take.

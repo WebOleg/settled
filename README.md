@@ -25,10 +25,11 @@ The rules the code follows are in [ENGINEERING.md](ENGINEERING.md). The plan is 
 ```sh
 make l1-up
 make l1-check
+make l1-blob-check
 ```
 
 A proof-of-stake L1 with geth and Lighthouse, started from its own genesis. Requires
-Docker, curl and jq. Services, endpoints and files are described in
+Docker, curl, jq and Go. Services, endpoints and files are described in
 [infra/devnet/l1/README.md](infra/devnet/l1/README.md); the reasons behind the setup are
 in [docs/design/devnet.md](docs/design/devnet.md).
 
@@ -38,7 +39,7 @@ in [docs/design/devnet.md](docs/design/devnet.md).
 make check
 ```
 
-Requires gitleaks and shellcheck. What each check does is in
+Requires gitleaks, shellcheck and Go. What each check does is in
 [ENGINEERING.md](ENGINEERING.md#local-checks).
 
 ## License

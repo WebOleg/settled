@@ -11,6 +11,7 @@ genesis, with the same forks active as Ethereum mainnet. Why it is built this wa
 |---|---|
 | `make l1-up` | Creates the genesis on first run, then starts the network |
 | `make l1-check` | Shows that both layers answer, advance and agree, and prints the finality status |
+| `make l1-blob-check` | Sends one blob transaction and waits until it is included with blob gas used |
 | `make l1-logs` | Follows the logs of all services |
 | `make l1-down` | Stops the network and keeps its data |
 | `make l1-reset` | Stops the network and deletes its data and genesis |
