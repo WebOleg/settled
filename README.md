@@ -17,6 +17,9 @@ Everything runs on one machine and needs no cloud account.
 Stage 0: repository and conventions. Nothing runs yet. This file describes only what
 exists and grows with the code.
 
+The rules the code follows are in [ENGINEERING.md](ENGINEERING.md). The plan is in
+[ROADMAP.md](ROADMAP.md).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
