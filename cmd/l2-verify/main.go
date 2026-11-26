@@ -55,7 +55,7 @@ var checks = []check{
 	{contract: "SystemConfigProxy", signature: "operatorFeeScalar()", want: big.NewInt(0)},
 	// Withdrawals are proven against the dispute game type the AnchorStateRegistry
 	// respects. op-contracts v9 starts a chain on 5, SUPER_PERMISSIONED_CANNON: only the
-	// proposer creates games, only the challenger disputes them.
+	// proposer creates games, and the guardian blacklists a wrong one.
 	{contract: "AnchorStateRegistryProxy", signature: "respectedGameType()", want: big.NewInt(RespectedGameType), note: "SUPER_PERMISSIONED_CANNON"},
 	// Devnet timings from the intent; the production values are in internal/l2intent.
 	{contract: "OptimismPortalProxy", signature: "proofMaturityDelaySeconds()", want: big.NewInt(l2intent.ProofMaturityDelaySeconds), note: "devnet; production 604800"},

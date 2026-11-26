@@ -43,6 +43,37 @@ func Word(ctx context.Context, c Caller, contract common.Address, signature stri
 	return common.BytesToHash(out), nil
 }
 
+// ErrBadReturn is returned when a call returns nothing or a length that is not a whole
+// number of 32-byte words.
+var ErrBadReturn = errors.New("chaincall: return value is not whole 32-byte words")
+
+// Words calls a getter whose arguments are each one 32-byte word (uint256, bytes32 or an
+// address in a word) and returns the words of its return value, such as the fields of
+// a returned tuple of static types.
+func Words(ctx context.Context, c Caller, contract common.Address, signature string, args ...common.Hash) ([]common.Hash, error) {
+	data := Selector(signature)
+	for _, a := range args {
+		data = append(data, a[:]...)
+	}
+	out, err := c.CallContract(ctx, ethereum.CallMsg{To: &contract, Data: data}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("chaincall: %s on %s: %w", signature, contract, err)
+	}
+	if len(out) == 0 || len(out)%32 != 0 {
+		return nil, fmt.Errorf("%w: %s on %s returned %d bytes", ErrBadReturn, signature, contract, len(out))
+	}
+	words := make([]common.Hash, len(out)/32)
+	for i := range words {
+		words[i] = common.BytesToHash(out[i*32 : (i+1)*32])
+	}
+	return words, nil
+}
+
+// UintWord returns n as one 32-byte argument word.
+func UintWord(n uint64) common.Hash {
+	return common.BigToHash(new(big.Int).SetUint64(n))
+}
+
 // AddressOf decodes a word that holds an address, refusing one with high bits set.
 func AddressOf(w common.Hash) (common.Address, error) {
 	for _, b := range w[:12] {

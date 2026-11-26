@@ -132,9 +132,12 @@ does not know without an error, which is why `make l2-verify` reads every timing
 from the L1.
 
 The respected dispute game type is 5, `SUPER_PERMISSIONED_CANNON`, which op-contracts v9
-deploys for a new chain: only the proposer creates games and only the challenger can
-dispute them. A permissionless game needs an absolute prestate built for this chain;
-that is a roadmap stage of its own.
+deploys for a new chain. It has no clock and no challenge step (see the proposer
+section), so of the timings above it uses only the proof maturity delay and the
+finality delay. The max clock, clock extension, preimage challenge period and DelayedWETH
+delay apply to the fault dispute games the deployment also holds, which a
+permissionless setup would use. A permissionless game needs an absolute prestate built
+for this chain; that is a roadmap stage of its own.
 
 Why not another op-deployer version, as checked on 2026-11-26:
 
@@ -252,7 +255,38 @@ the verifier's safe and unsafe heads with the sequencer's blocks at the same num
 | Own engine API secret | One secret per op-node and op-reth pair, as for the sequencer. |
 | `--rollup.sequencer` on the verifier's op-reth | Transactions sent to the verifier are forwarded to the sequencer, the only node that builds blocks. This is how public RPC nodes of OP Stack chains work. |
 | Verifier ports 28545, 28546, 29545 on 127.0.0.1 | Separate from the sequencer's ports. |
+| `--rpc.eth-proof-window=302400` on the verifier's op-reth | `eth_getProof` for blocks up to one week back. op-reth refuses proofs for older blocks by default (`distance to target block exceeds maximum proof window`), and checking a proposal or proving a withdrawal needs the storage proof at the block the proposal names. |
 | Verification confirmations left at 0 | The verifier derives from the L1 head, as the sequencer does. Nodes that follow a public L1 often wait a few L1 blocks to avoid work undone by L1 reorgs; this L1 does not reorg on its own. |
+
+## L2: proposer
+
+op-proposer v1.17.1, pinned by digest, posts the state of the L2 to the L1 as dispute
+games. Each game claims a super root at an L2 timestamp: version 1, the timestamp, and
+for each chain its chain id and output root. With one chain it wraps one output root,
+which commits to the block's state root, its hash and the storage root of the
+L2ToL1MessagePasser, where withdrawals are recorded. A withdrawal is proven on the L1
+against such a claim once its game has resolved.
+
+| Choice | Reason |
+|---|---|
+| Game type 5, `SUPER_PERMISSIONED_CANNON` | The type the deployment respects. Only the proposer can create a game, and the game resolves for the proposer the moment it is created: it has no clock, no bond and no challenge step. A wrong root is removed by the guardian, who blacklists the game in the AnchorStateRegistry during the finality delay, before any withdrawal can use it. Safety rests on the proposer and on someone checking every game in time. |
+| `--superroot-rpcs` pointing at the verifier's op-node | Game type 5 needs super roots, and op-node serves `superroot_atTimestamp` for a single chain. The proposer reads from the node that derives the chain from the L1, not from the sequencer that built it, so it never proposes what only the sequencer has seen. |
+| Finalized L2 only (`--allow-non-finalized` off) | A proposal covers only blocks whose batches are in finalized L1 blocks, so an L1 reorg cannot invalidate it. The first game appears once the L1 has finalized, about 10 minutes after a new devnet starts. |
+| `--proposal-interval=60s` | Differs from production, where a proposal is made about once an hour; each game costs L1 gas and a bond. |
+| `--num-confirmations=4` | As for the batcher: this L1 does not reorg on its own. |
+| The key as a Compose secret | As for the batcher and the sequencer: only this container gets it, and it is not in `docker inspect` or the process list. |
+| The factory address in an env file | It changes with every deployment; `l2-init.sh` writes it from `l1-addresses.json`. It is not a secret. |
+
+That someone is `make l2-games`: it checks the most recent games without trusting the
+proposer or op-node. For each game it reads from the L1 the type, the creator and the
+proposer the game accepts, that it resolved for the defender and that its type was the
+respected one, and the root claim. It then takes the
+block at the game's timestamp from the verifier's op-reth, gets the
+L2ToL1MessagePasser storage root with `eth_getProof`, and recomputes the output root
+and the super root with [internal/outputroot](../../internal/outputroot). The output
+root must also equal what the verifier's op-node reports, and the root claim must equal
+the recomputed super root. The encoding was checked against a real block of this L2:
+the output root computed from op-reth data matched the one op-node returned.
 
 ## Alternatives rejected
 
@@ -280,6 +314,11 @@ the verifier's safe and unsafe heads with the sequencer's blocks at the same num
   `docker exec` or read `.devnet/l2/keys` can read them. Production batchers sign
   through a remote signer (`--signer.*`), so the key never reaches the host that runs
   the batcher.
+- With game type 5 a wrong root is only stopped if someone recomputes it and the
+  guardian blacklists the game within the 30 s finality delay. `make l2-games` does the
+  recomputation when it is run; nothing yet does it continuously or acts on it. The
+  first check in this repository assumed a game with a clock and failed reading
+  `maxClockDuration()`: the expectation was wrong, not the game.
 - If the L2 runs without a batcher for longer than the sequencing window (3600 L1
   blocks, 6 hours here), op-node replaces the unbatched blocks when the batcher comes
   back. `make l2-reset` starts the L2 over in that case.

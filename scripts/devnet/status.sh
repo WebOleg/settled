@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # One look at the whole devnet, without waiting: which services run, the L1 heads, the
-# L2 heads on the sequencer and the verifier, and the L1 balances of the accounts that
-# pay for batches. Exits 1 if a service is down or does not answer.
+# L2 heads on the sequencer and the verifier, the number of dispute games, and the L1
+# balances of the accounts that pay for batches and proposals. Exits 1 if a service is
+# down or does not answer.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -22,7 +23,7 @@ num() { if [ -n "$1" ] && [ "$1" != "null" ]; then printf '%d' "$1"; else echo "
 
 echo "Services"
 for pair in "l1:geth" "l1:beacon" "l1:validator" "l2:op-reth" "l2:op-node" "l2:op-batcher" \
-  "l2:verifier-op-reth" "l2:verifier-op-node"; do
+  "l2:verifier-op-reth" "l2:verifier-op-node" "l2:op-proposer"; do
   layer="${pair%%:*}"; svc="${pair#*:}"
   if [ "$layer" = "l1" ]; then compose="$L1"; else compose="$L2"; fi
   state="$($compose ps -a --format '{{.State}}' "$svc" 2>/dev/null | head -1)"
@@ -55,6 +56,16 @@ for pair in "sequencer:$SEQ_NODE" "verifier:$VER_NODE"; do
     printf '  %-12s op-node does not answer\n' "$name"; problems=$((problems + 1))
   fi
 done
+
+echo
+echo "Dispute games"
+dgf="$(jq -r '.DisputeGameFactoryProxy // empty' .devnet/l2/deployer/l1-addresses.json 2>/dev/null || true)"
+if [ -n "$dgf" ]; then
+  count="$(call "$L1_EL" eth_call "[{\"to\":\"$dgf\",\"data\":\"0x4d1975b4\"},\"latest\"]" 2>/dev/null || echo "")"
+  printf '  %-12s %s games (make l2-games checks them)\n' "factory" "$(num "$count")"
+else
+  echo "  no deployment yet"
+fi
 
 echo
 echo "L1 balances of the operator accounts"

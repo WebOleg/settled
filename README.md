@@ -65,6 +65,8 @@ flowchart TB
     vnode -- "engine API" --> vreth
   end
 
+  proposer["op-proposer"]
+
   subgraph L1["L1: proof of stake, chain 3151908, 6 s slots"]
     direction LR
     vc["Lighthouse validator<br/>64 validators"]
@@ -80,6 +82,8 @@ flowchart TB
   batcher == "batches as blob transactions" ==> geth
   node -- "L1 blocks, deposits" --> geth
   vnode == "L1 blocks and blobs: derives every safe block" ==> L1
+  proposer -- "super roots" --> vnode
+  proposer == "dispute games, every 60 s" ==> geth
 ```
 
 The sequencer builds a block every 2 s and gossips it, signed, to the verifier. The
@@ -92,6 +96,9 @@ batches back from the L1, so a block moves through three states:
 | safe | Derived from a batch on the L1 | The L1; every node derives the same block |
 | finalized | Its batch is in a finalized L1 block | L1 finality, two to three epochs (about 7 to 10 minutes here) |
 
+Once a minute the proposer takes a finalized state from the verifier and posts it to
+the L1 as a dispute game. Withdrawals are proven against those games.
+
 Security boundaries:
 
 | What | Where it is reachable |
@@ -100,8 +107,9 @@ Security boundaries:
 | Engine APIs, peer-to-peer between the op-nodes | Inside Docker networks only |
 | Sequencer key | The sequencer op-node only, as a secret file |
 | Batcher key | op-batcher only, as a secret file |
+| Proposer key | op-proposer only, as a secret file |
 | Deployer key | op-deployer only, through the container environment, while `make l2-deploy` runs |
-| Admin, proposer, challenger and fee recipient keys | No service uses them yet; the proposer and challenger come in stage 2 |
+| Admin, guardian, challenger and fee recipient keys | No service uses them; with game type 5 the guardian, not a challenger, removes a wrong game |
 
 ## Local L1
 

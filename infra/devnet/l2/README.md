@@ -4,10 +4,12 @@ The devnet L2. The sequencer: op-reth executes blocks, op-node builds them every
 follows the L1 and drives op-reth through the engine API, and op-batcher posts the
 blocks to the L1 as blobs, from which they become safe. The verifier: a second op-reth
 and op-node that derive the chain from the L1 and take new blocks from the sequencer
-over peer-to-peer. Why it is built this way is in the
-[sequencer](../../../docs/design/devnet.md#l2-sequencer),
-[batcher](../../../docs/design/devnet.md#l2-batcher) and
-[verifier](../../../docs/design/devnet.md#l2-verifier) sections of the design.
+over peer-to-peer. The proposer: op-proposer posts the verifier's view of the chain to
+the L1 as dispute games, which withdrawals are proven against. Why it is built this
+way is in the [sequencer](../../../docs/design/devnet.md#l2-sequencer),
+[batcher](../../../docs/design/devnet.md#l2-batcher),
+[verifier](../../../docs/design/devnet.md#l2-verifier) and
+[proposer](../../../docs/design/devnet.md#l2-proposer) sections of the design.
 
 It needs the running L1 (`make l1-up`), the role keys (`make l2-keys`, `make l2-fund`)
 and the deployment (`make l2-deploy`).
@@ -16,8 +18,9 @@ and the deployment (`make l2-deploy`).
 
 | Command | What it does |
 |---|---|
-| `make l2-up` | Prepares the runtime folders, engine API secrets and node keys on first run, writes the verifier's peer address, checks the role keys, then starts the five services |
+| `make l2-up` | Prepares the runtime folders, engine API secrets and node keys on first run, writes the verifier's peer address and the proposer's factory address, checks the role keys, then starts the six services |
 | `make l2-check` | Shows that the L2 answers, advances every 2 s and follows the L1; that the safe head advances; that the batches on the L1 are blob transactions to the batch inbox; that op-reth and op-node agree on the unsafe and safe blocks; and that the verifier is connected to the sequencer, catches up, and has the same block hashes and state roots |
+| `make l2-games` | Waits up to 15 minutes for the first dispute game, then checks the recent games: type, creator, resolved for the proposer, respected type, and that each root claim equals the super root recomputed from the verifier |
 | `make l2-logs` | Follows the logs of all services |
 | `make l2-down` | Stops the services and keeps their data |
 | `make l2-reset` | Stops the services and deletes the chain data; keys and deployment are kept |
@@ -31,6 +34,7 @@ and the deployment (`make l2-deploy`).
 | `op-batcher` | `op-batcher:v1.19.0`, pinned by digest | Posts L2 blocks to the L1 as blob transactions |
 | `verifier-op-reth` | `op-reth:v2.10.0`, pinned by digest | Execution client of the verifier; forwards transactions to the sequencer |
 | `verifier-op-node` | `op-node:v1.21.0`, pinned by digest | Rollup node in verifier mode |
+| `op-proposer` | `op-proposer:v1.17.1`, pinned by digest | Posts the verifier's super roots to the L1 as dispute games, every 60 s |
 
 ## Endpoints
 
@@ -45,7 +49,8 @@ and the deployment (`make l2-deploy`).
 
 Every port is bound to `127.0.0.1`. The engine APIs and the peer-to-peer port 9222 of
 both op-nodes stay inside the Docker network. Both op-nodes and op-batcher also join
-the L1 network to reach `geth` and `beacon`. op-batcher publishes no port.
+the L1 network to reach `geth` and `beacon`, and so does op-proposer. op-batcher and
+op-proposer publish no port.
 
 ## Files
 
@@ -60,4 +65,6 @@ the L1 network to reach `geth` and `beacon`. op-batcher publishes no port.
 | `.devnet/l2/verifier/p2p.env` | `OP_NODE_P2P_STATIC`, the sequencer's address with its peer ID, for the verifier op-node |
 | `.devnet/l2/sequencer/op-reth`, `op-node`, and the same under `verifier` | Client databases; each op-node keeps its safe-head database and peer store here |
 | `.devnet/l2/keys/batcher.key` | Batcher key from `make l2-keys`, mode 600; mounted into op-batcher only, as a Compose secret |
+| `.devnet/l2/keys/proposer.key` | Proposer key from `make l2-keys`, mode 600; mounted into op-proposer only, as a Compose secret |
+| `.devnet/l2/proposer/proposer.env` | `OP_PROPOSER_GAME_FACTORY_ADDRESS` of this deployment, written by `l2-init.sh` |
 | `.devnet/l2/keys/sequencer.key` | Sequencer key from `make l2-keys`, mode 600; mounted into the sequencer op-node only, as a Compose secret |

@@ -1,22 +1,23 @@
 #!/usr/bin/env bash
-# Prepares the runtime folders of the L2 sequencer and verifier: one engine API secret
-# per op-node and op-reth pair and one peer-to-peer node key per op-node, each created
-# once with mode 600, the L1 chain config for op-node, and the verifier's static peer
-# address. Checks that the role keys mounted into containers exist and only their owner
-# can read them. With --reset, deletes the chain data and secrets of both nodes; the
-# role keys and the contract deployment are kept.
+# Prepares the runtime folders of the L2 sequencer, verifier and proposer: one engine
+# API secret per op-node and op-reth pair and one peer-to-peer node key per op-node, each
+# created once with mode 600, the L1 chain config for op-node, the verifier's static
+# peer address and the proposer's game factory address. Checks that the role keys
+# mounted into containers exist and only their owner can read them. With --reset,
+# deletes all of that; the role keys and the contract deployment are kept.
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
 seq="$root/.devnet/l2/sequencer"
 ver="$root/.devnet/l2/verifier"
+prop="$root/.devnet/l2/proposer"
 deployer="$root/.devnet/l2/deployer"
 keys="$root/.devnet/l2/keys"
 
 remove_state() {
-  for d in "$seq" "$ver"; do
+  for d in "$seq" "$ver" "$prop"; do
     case "$d" in
-      */.devnet/l2/sequencer | */.devnet/l2/verifier) rm -rf "$d" ;;
+      */.devnet/l2/sequencer | */.devnet/l2/verifier | */.devnet/l2/proposer) rm -rf "$d" ;;
       *) echo "l2-init: refusing to delete $d"; exit 1 ;;
     esac
   done
@@ -24,7 +25,7 @@ remove_state() {
 
 if [ "${1:-}" = "--reset" ]; then
   remove_state
-  echo "l2-init: removed .devnet/l2/sequencer and .devnet/l2/verifier (keys and deployment kept)"
+  echo "l2-init: removed .devnet/l2/sequencer, verifier and proposer (keys and deployment kept)"
   exit 0
 fi
 
@@ -97,11 +98,20 @@ printf 'OP_NODE_P2P_STATIC=/dns4/op-node/tcp/9222/p2p/%s\n' "$seq_peer" > "$ver/
 printf '%s\n' "$seq_peer" > "$seq/peer-id"
 printf '%s\n' "$ver_peer" > "$ver/peer-id"
 
+# The proposer creates games on this deployment's DisputeGameFactory. Rewritten on every
+# run, so it always matches the deployment.
+mkdir -p "$prop"
+chmod 700 "$prop"
+dgf="$(jq -r '.DisputeGameFactoryProxy // empty' "$deployer/l1-addresses.json")"
+[ -n "$dgf" ] || { echo "l2-init: no DisputeGameFactoryProxy in l1-addresses.json"; exit 1; }
+printf 'OP_PROPOSER_GAME_FACTORY_ADDRESS=%s\n' "$dgf" > "$prop/proposer.env"
+
 # Role keys mounted as secret files: the batcher key into op-batcher, the sequencer key
-# into the sequencer op-node. Refuse a missing key or one that others can read, the same
-# rule make l2-keys applies; never fix the mode silently.
+# into the sequencer op-node, the proposer key into op-proposer. Refuse a missing key or
+# one that others can read, the same rule make l2-keys applies; never fix the mode
+# silently.
 want_mode "$keys" 700
-for role in batcher sequencer; do
+for role in batcher sequencer proposer; do
   [ -f "$keys/$role.key" ] || { echo "l2-init: no $role key; run make l2-keys first"; exit 1; }
   want_mode "$keys/$role.key" 600
 done

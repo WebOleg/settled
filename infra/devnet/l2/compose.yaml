@@ -1,7 +1,8 @@
 # Devnet L2. Sequencer: op-reth (execution), op-node (rollup node, sequencing) and
 # op-batcher (posts the L2 blocks to the L1 as blobs). Verifier: a second op-reth and
 # op-node that build the chain from the L1 and receive new blocks from the sequencer
-# over peer-to-peer. Reads the chain config written by make l2-deploy; the rollup nodes
+# over peer-to-peer. op-proposer posts the verifier's view of the chain to the L1 as
+# dispute games. Reads the chain config written by make l2-deploy; the rollup nodes
 # and the batcher join the L1 network to reach geth and the beacon node. Ports are bound
 # to 127.0.0.1 only; engine APIs and peer-to-peer ports are not published at all. Images
 # are pinned by digest.
@@ -19,6 +20,8 @@ secrets:
     file: ../../../.devnet/l2/keys/batcher.key
   sequencer_key:
     file: ../../../.devnet/l2/keys/sequencer.key
+  proposer_key:
+    file: ../../../.devnet/l2/keys/proposer.key
 
 networks:
   default: {}
@@ -160,6 +163,9 @@ services:
       # Transactions sent to this node are forwarded to the sequencer, the only node
       # that builds blocks.
       - --rollup.sequencer=http://op-reth:8545
+      # Proofs of past blocks (eth_getProof) up to one week of 2 s blocks back, so every
+      # proposal and every withdrawal can be checked against the block it names.
+      - --rpc.eth-proof-window=302400
     ports:
       - 127.0.0.1:28545:8545
       - 127.0.0.1:28546:8546
@@ -209,3 +215,32 @@ services:
       - *verifierjwt
       - ../../../.devnet/l2/verifier/p2p.key:/p2p/node.key:ro
       - ../../../.devnet/l2/verifier/op-node:/data
+
+  op-proposer:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-proposer:v1.17.1@sha256:4e5c88fefd52a31961a09cd4bbb8883a1afcdd875ee651ab664a5268bd0c05e6
+    restart: unless-stopped
+    depends_on:
+      - verifier-op-node
+    networks:
+      - default
+      - l1
+    secrets:
+      - proposer_key
+    # OP_PROPOSER_GAME_FACTORY_ADDRESS: the DisputeGameFactory of this deployment, written
+    # by l2-init.sh from l1-addresses.json. Not a secret.
+    env_file:
+      - ../../../.devnet/l2/proposer/proposer.env
+    entrypoint:
+      - /bin/sh
+      - -c
+      - set -eu; OP_PROPOSER_PRIVATE_KEY="$$(cat /run/secrets/proposer_key)"; export OP_PROPOSER_PRIVATE_KEY; exec op-proposer "$$@"
+      - op-proposer
+    command:
+      - --l1-eth-rpc=http://geth:8545
+      # Game type 5 commits to super roots. The proposer reads them from the verifier,
+      # which derives the chain from the L1, not from the sequencer that built it.
+      - --superroot-rpcs=http://verifier-op-node:9545
+      - --game-type=5
+      # Differs from production, where a proposal is made about once an hour.
+      - --proposal-interval=60s
+      - --num-confirmations=4

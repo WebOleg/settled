@@ -90,3 +90,31 @@ func TestUintOf(t *testing.T) {
 		t.Fatalf("got %s", UintOf(w))
 	}
 }
+
+func TestWordsSendsArgumentsAndSplitsTheReturn(t *testing.T) {
+	out := make([]byte, 96)
+	out[31], out[63], out[95] = 5, 7, 9
+	f := &fakeCaller{out: out}
+	words, err := Words(context.Background(), f, common.Address{}, "gameAtIndex(uint256)", UintWord(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words) != 3 || words[0][31] != 5 || words[1][31] != 7 || words[2][31] != 9 {
+		t.Fatalf("got %v", words)
+	}
+	if len(f.got.Data) != 36 || f.got.Data[35] != 3 {
+		t.Fatalf("call data %x, want selector and the index word", f.got.Data)
+	}
+	if hex.EncodeToString(f.got.Data[:4]) != hex.EncodeToString(Selector("gameAtIndex(uint256)")) {
+		t.Fatalf("call data %x does not start with the selector", f.got.Data)
+	}
+}
+
+func TestWordsRejectsPartialWords(t *testing.T) {
+	for _, n := range []int{0, 33, 65} {
+		f := &fakeCaller{out: make([]byte, n)}
+		if _, err := Words(context.Background(), f, common.Address{}, "x()"); !errors.Is(err, ErrBadReturn) {
+			t.Errorf("%d bytes: got %v, want ErrBadReturn", n, err)
+		}
+	}
+}

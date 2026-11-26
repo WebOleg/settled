@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help up down status reset check check-docs check-shell check-secrets check-go l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-logs l2-down l2-reset
+.PHONY: help up down status reset check check-docs check-shell check-secrets check-go l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-logs l2-down l2-reset
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
@@ -90,6 +90,9 @@ l2-up: ## Start the L2 sequencer, batcher and verifier; needs l1-up and l2-deplo
 
 l2-check: ## Show that the L2 advances, its batches reach the L1 as blobs, and the verifier agrees
 	@scripts/devnet/l2-check.sh
+
+l2-games: ## Check the proposer's dispute games against roots recomputed from the verifier
+	@go run ./cmd/l2-games --wait 15m
 
 l2-logs: ## Follow the logs of the L2 services
 	@$(L2) logs --follow --tail 50
