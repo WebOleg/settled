@@ -14,10 +14,12 @@ Everything runs on one machine and needs no cloud account.
 
 ## Status
 
-Stage 1 is done. A local proof-of-stake L1 runs, the L2 contracts are deployed on it,
-the L2 sequencer produces blocks and the batcher posts them to the L1 as blobs, so the
-L2 safe head follows the L1. A verifier node derives the same chain from the L1 and
-receives new blocks from the sequencer over peer-to-peer. This file describes only what
+Stages 1 and 2 are done. A local proof-of-stake L1 runs, the L2 contracts are deployed
+on it, the L2 sequencer produces blocks and the batcher posts them to the L1 as blobs,
+so the L2 safe head follows the L1. A verifier node derives the same chain from the L1
+and receives new blocks from the sequencer over peer-to-peer. The proposer posts the L2
+state to the L1, every proposal is recomputed independently, and ETH moves both ways
+with every wei accounted for. This file describes only what
 exists and grows with the code.
 
 The rules the code follows are in [ENGINEERING.md](ENGINEERING.md). The plan is in
@@ -158,11 +160,13 @@ from the L1. Services, endpoints and files are in
 ```sh
 make l2-games
 make l2-deposit
+make l2-withdraw
 ```
 
 `l2-games` checks the dispute games the proposer posts: each root claim is recomputed
 from the verifier's execution client. `l2-deposit` moves 1 ETH from the L1 to the L2 and
-accounts for every wei on both sides. Why they work this way is in
+`l2-withdraw` moves 0.1 ETH back, proven against a game and finalized on the L1; both
+account for every wei on both sides, and a withdrawal cannot be paid twice. Why they work this way is in
 [docs/design/devnet.md](docs/design/devnet.md#l2-proposer).
 
 ## Checks

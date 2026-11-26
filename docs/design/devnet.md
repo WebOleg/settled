@@ -315,6 +315,28 @@ block.
 | The deposit counts once it is safe | An unsafe block is only the sequencer's word. A safe block is derived from the L1 by the verifier. The bridge in stage 5 goes one step further and credits only at finalized. |
 | `OptimismPortal` directly, not `L1StandardBridge` | The portal is the base layer every bridge uses. The standard bridge adds a cross-domain message on top, which is worth showing with tokens, not with plain ETH. |
 
+## L2: withdrawals
+
+`make l2-withdraw` takes 0.1 ETH of the devnet user back from the L2 to the L1, with
+[cmd/l2-withdraw](../../cmd/l2-withdraw). It takes about 15 minutes, most of it waiting
+for the L1 to finalize the block that holds the withdrawal, because the proposer only
+proposes finalized state.
+
+| Step | Where | What is checked, exactly |
+|---|---|---|
+| Start | L2: `L2ToL1MessagePasser.initiateWithdrawal`, sent to the verifier, which forwards it to the sequencer | The withdrawal hash computed here equals the one the contract emits. The user paid the amount, the execution gas and the L1 data fee (`l1Fee` of the receipt). The passer holds the amount more. |
+| Wait for a game | L1: the newest game at or after the withdrawal's L2 block | Type 5, created by the proposer, resolved for the defender, respected; its root claim equals the super root recomputed from the verifier. A game is never used unchecked. |
+| Prove | L1: `OptimismPortal.proveWithdrawalTransaction` | The proof is the output root opened into state root, passer storage root and block hash, and the Merkle proof from `eth_getProof` that the withdrawal's slot is set at the game's block. |
+| Wait for maturity | L1 | Finalization is tried with `eth_estimateGas` until the portal accepts it: 60 s after the proof, and 30 s after the game resolved. |
+| Finalize | L1: `OptimismPortal.finalizeWithdrawalTransaction` | The lockbox and the portal paid out the amount; the user received it less the gas; `finalizedWithdrawals(hash)` is true. |
+| Replay | L1 | A second finalization of the same withdrawal is refused. |
+| Overall | L1 | From the block before the proof to the block of the finalization, the user gained the amount less the gas of both transactions. |
+
+The withdrawal hash commits to nonce, sender, target, value, gas limit and data, and the
+portal marks it finalized before it pays. That is what makes a withdrawal pay once,
+however many times its finalization is sent. The bridge in stage 5 adds the same rule
+on its own side: one payout per withdrawal in the ledger, under retries and races.
+
 ## Alternatives rejected
 
 | Option | Why not |
