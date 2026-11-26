@@ -61,19 +61,19 @@ l2-deploy: ## Deploy the L2 contracts to the local L1 with op-deployer (once)
 l2-verify: ## Check the deployed L2 contracts on the L1: owners, operators, parameters
 	@go run ./cmd/l2-verify
 
-l2-up: ## Start the L2 sequencer (op-reth and op-node); needs l1-up and l2-deploy
+l2-up: ## Start the L2 (op-reth, op-node, op-batcher); needs l1-up and l2-deploy
 	@scripts/devnet/l2-init.sh
 	@$(L2) up -d --quiet-pull
 
-l2-check: ## Show that the L2 answers, advances, follows the L1 and agrees on the head
+l2-check: ## Show that the L2 advances, follows the L1, and its batches reach the L1 as blobs
 	@scripts/devnet/l2-check.sh
 
-l2-logs: ## Follow the logs of the L2 sequencer
+l2-logs: ## Follow the logs of the L2 services
 	@$(L2) logs --follow --tail 50
 
-l2-down: ## Stop the L2 sequencer and keep its data
+l2-down: ## Stop the L2 services and keep their data
 	@$(L2) down
 
-l2-reset: ## Stop the L2 sequencer and delete its chain data (keys and deployment kept)
+l2-reset: ## Stop the L2 services and delete the chain data (keys and deployment kept)
 	@$(L2) down
 	@scripts/devnet/l2-init.sh --reset

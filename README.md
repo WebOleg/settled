@@ -14,9 +14,9 @@ Everything runs on one machine and needs no cloud account.
 
 ## Status
 
-Stage 1 is in progress. The local L1 runs. The L2 contracts are deployed on it and the
-L2 sequencer produces blocks; no batches are posted to the L1 yet. This file
-describes only what exists and grows with the code.
+Stage 1 is in progress. The local L1 runs. The L2 contracts are deployed on it, the
+L2 sequencer produces blocks and the batcher posts them to the L1 as blobs, so the L2
+safe head follows the L1. This file describes only what exists and grows with the code.
 
 The rules the code follows are in [ENGINEERING.md](ENGINEERING.md). The plan is in
 [ROADMAP.md](ROADMAP.md).
@@ -58,8 +58,9 @@ make l2-up
 make l2-check
 ```
 
-The L2 sequencer, op-reth and op-node, built from the deployment above. Services,
-endpoints and files are in [infra/devnet/l2/README.md](infra/devnet/l2/README.md).
+The L2 built from the deployment above: op-reth and op-node sequence blocks, and
+op-batcher posts them to the L1 as blobs. Services, endpoints and files are in
+[infra/devnet/l2/README.md](infra/devnet/l2/README.md).
 
 ## Checks
 

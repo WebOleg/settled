@@ -1,12 +1,19 @@
-# Devnet L2 sequencer: op-reth (execution) and op-node (rollup node, sequencing).
-# Reads the chain config written by make l2-deploy and joins the L1 network to reach
-# geth and the beacon node. Ports are bound to 127.0.0.1 only; the engine API between
-# op-node and op-reth is not published at all. Images are pinned by digest.
+# Devnet L2: op-reth (execution), op-node (rollup node, sequencing) and op-batcher
+# (posts the L2 blocks to the L1 as blobs). Reads the chain config written by make
+# l2-deploy; op-node and op-batcher join the L1 network to reach geth and the beacon
+# node. Ports are bound to 127.0.0.1 only; the engine API between op-node and op-reth
+# is not published at all. Images are pinned by digest.
 name: settled-l2
 
 x-deployer: &deployer ../../../.devnet/l2/deployer:/deployer:ro
 x-l1-chain: &l1chain ../../../.devnet/l2/sequencer/l1-chain-config.json:/l1/chain-config.json:ro
 x-jwt: &jwt ../../../.devnet/l2/sequencer/jwt.hex:/secrets/jwt.hex:ro
+
+# The batcher key is the only key any container gets. It is mounted as a file, never put
+# in this file, an env file or a command line.
+secrets:
+  batcher_key:
+    file: ../../../.devnet/l2/keys/batcher.key
 
 networks:
   default: {}
@@ -25,7 +32,9 @@ services:
       - --http
       - --http.addr=0.0.0.0
       - --http.port=8545
-      - --http.api=eth,net,web3,txpool,debug
+      # miner: the batcher calls miner_setMaxDASize to throttle block data when posting
+      # falls behind.
+      - --http.api=eth,net,web3,txpool,debug,miner
       - --ws
       - --ws.addr=0.0.0.0
       - --ws.port=8546
@@ -76,3 +85,34 @@ services:
       - *l1chain
       - *jwt
       - ../../../.devnet/l2/sequencer/op-node:/data
+
+  op-batcher:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-batcher:v1.19.0@sha256:1d866b68302d3e071a8c4b1c35d0055ac8f44606d07c032d021d102523cc1462
+    restart: unless-stopped
+    depends_on:
+      - op-node
+    networks:
+      - default
+      - l1
+    secrets:
+      - batcher_key
+    # Reads the key from the secret file into the environment of op-batcher only, so it
+    # is not in docker inspect or in the process arguments.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - set -eu; OP_BATCHER_PRIVATE_KEY="$$(cat /run/secrets/batcher_key)"; export OP_BATCHER_PRIVATE_KEY; exec op-batcher "$$@"
+      - op-batcher
+    command:
+      - --l1-eth-rpc=http://geth:8545
+      - --l2-eth-rpc=http://op-reth:8545
+      - --rollup-rpc=http://op-node:9545
+      - --data-availability-type=blobs
+      - --batch-type=1
+      - --compression-algo=brotli-10
+      # Differs from production: close a channel after 5 L1 blocks (30 s) so the safe
+      # head moves within a minute on an idle chain. 0, the default, waits for a full
+      # channel or the end of the sequencing window.
+      - --max-channel-duration=5
+      - --num-confirmations=4
+      - --wait-node-sync

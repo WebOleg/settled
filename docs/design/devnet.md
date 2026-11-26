@@ -181,8 +181,25 @@ of the services, endpoints and files are in
 | Peer-to-peer off, no sequencer key in the container | The sequencer key signs unsafe blocks for gossip to other nodes. With no other node there is nothing to gossip to, and a container gets no key it does not use. |
 | Ports 18545, 18546, 19545 on 127.0.0.1 | Separate from the L1 ports; nothing listens on other interfaces |
 
-Until a batcher posts batches to the L1, the safe and finalized L2 heads stay at genesis.
-`make l2-check` prints them and does not treat that as a failure.
+The safe and finalized L2 heads come from batches on the L1, which the batcher posts.
+
+## L2: batcher
+
+op-batcher v1.19.0, pinned by digest, reads new L2 blocks from op-reth and op-node,
+packs them into channels, and posts each channel to the batch inbox address on the L1.
+op-node reads the inbox back, and a block it derives from the L1 becomes safe; it
+becomes finalized when the L1 block holding its batch is finalized.
+
+| Choice | Reason |
+|---|---|
+| Blobs as data availability (`--data-availability-type=blobs`) | Production OP Stack chains post batches as EIP-4844 blobs, which cost less than calldata and are pruned by the L1 after about 18 days. The default is calldata. Since Fusaka a blob sidecar carries cell proofs; op-batcher v1.19.0 builds only that format, which fits the local L1, where Osaka is active from genesis. |
+| Span batches (`--batch-type=1`) and `brotli-10` compression | A span batch encodes a range of blocks in one batch (Delta), and brotli compresses better than zlib (Fjord). Both forks are active on this L2. The defaults are the older singular batches and zlib. |
+| `--max-channel-duration=5`, 30 s | Differs from production. A channel otherwise closes only when it is full or when the sequencing window is close to its end, so on an idle devnet the safe head would wait for hours. Production chains keep a channel open for hours to fill each blob and pay less. |
+| `--num-confirmations=4` | Differs from production, where the default of 10 is used. This L1 has one beacon node and no peers, so it does not reorg unless a reorg is made on purpose. With one transaction in flight, 4 confirmations (24 s) keep up with one channel every 30 s. |
+| `--wait-node-sync` | After a restart the batcher waits until op-node has read the L1 up to its head before it posts, so data already on the L1 is not posted twice. |
+| Data throttling on, `miner` API on op-reth | When posting falls behind, the batcher asks the execution client through `miner_setMaxDASize` to build blocks with less data, so the backlog cannot grow without limit. op-batcher stops if the method is missing, so op-reth serves the `miner` namespace. Here it is reachable from the Docker network and 127.0.0.1 only; a production node that serves a public RPC keeps it on an internal endpoint. The simpler option, turning throttling off, is what upstream warns against for production. |
+| The key as a Compose secret, read into the environment when the container starts | Only the batcher container gets a key. It is not written in `compose.yaml`, an env file or a command line, so it does not show in `docker inspect`, in `docker compose config` or in the process list. This was checked against `docker inspect` and `docker compose config` when the service was added. The simpler options, `--private-key` on the command line or an env file, show the key in `docker inspect`. |
+| No published port, metrics off | Nothing on the host calls the batcher yet. Metrics come with the observability stage. |
 
 ## Alternatives rejected
 
@@ -205,3 +222,9 @@ Until a batcher posts batches to the L1, the safe and finalized L2 heads stay at
 - The validator keys are public test keys. They are safe only on this network.
 - The suggested fee recipient is the burn address `0x...dEaD`. Priority fees on this
   network have no value.
+- The batcher key sits in a file on the same machine. Anyone who can run `docker exec`
+  or read `.devnet/l2/keys` can read it. Production batchers sign through a remote
+  signer (`--signer.*`), so the key never reaches the host that runs the batcher.
+- If the L2 runs without a batcher for longer than the sequencing window (3600 L1
+  blocks, 6 hours here), op-node replaces the unbatched blocks when the batcher comes
+  back. `make l2-reset` starts the L2 over in that case.

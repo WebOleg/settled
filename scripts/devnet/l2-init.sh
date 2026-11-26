@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Prepares the runtime folders of the L2 sequencer and its engine API secret, once.
-# With --reset, deletes the sequencer's chain data and secret; the role keys and the
-# contract deployment are kept.
+# Prepares the runtime folders of the L2 sequencer and its engine API secret, once, and
+# checks that the batcher key exists and only its owner can read it. With --reset,
+# deletes the sequencer's chain data and secret; the role keys and the contract
+# deployment are kept.
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
 dir="$root/.devnet/l2/sequencer"
 deployer="$root/.devnet/l2/deployer"
+keys="$root/.devnet/l2/keys"
 
 remove_state() {
   case "$dir" in
@@ -56,6 +58,15 @@ if [ ! -f "$dir/jwt.hex" ]; then
   (umask 077 && openssl rand -hex 32 > "$dir/jwt.hex")
   echo "l2-init: created the engine API secret"
 fi
-perm="$(stat -f '%Lp' "$dir/jwt.hex" 2>/dev/null || stat -c '%a' "$dir/jwt.hex")"
+mode() { stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"; }
+perm="$(mode "$dir/jwt.hex")"
 [ "$perm" = "600" ] || { echo "l2-init: $dir/jwt.hex has mode $perm, want 600"; exit 1; }
+
+# The batcher container mounts its key as a secret file. Refuse a missing key or one that
+# others can read, the same rule make l2-keys applies; never fix the mode silently.
+[ -f "$keys/batcher.key" ] || { echo "l2-init: no batcher key; run make l2-keys first"; exit 1; }
+perm="$(mode "$keys")"
+[ "$perm" = "700" ] || { echo "l2-init: $keys has mode $perm, want 700"; exit 1; }
+perm="$(mode "$keys/batcher.key")"
+[ "$perm" = "600" ] || { echo "l2-init: $keys/batcher.key has mode $perm, want 600"; exit 1; }
 echo "l2-init: ready"
