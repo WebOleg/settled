@@ -46,6 +46,63 @@ on any other L1.
 
 The sections below are the parts `make up` runs, for working on one of them.
 
+## Architecture
+
+```mermaid
+flowchart TB
+  subgraph SEQ["L2 sequencer: chain 420420, 2 s blocks"]
+    direction TB
+    batcher["op-batcher"]
+    node["op-node<br/>sequencer"]
+    reth["op-reth"]
+    node -- "engine API" --> reth
+  end
+
+  subgraph VER["L2 verifier: no role key"]
+    direction TB
+    vnode["op-node<br/>verifier"]
+    vreth["op-reth"]
+    vnode -- "engine API" --> vreth
+  end
+
+  subgraph L1["L1: proof of stake, chain 3151908, 6 s slots"]
+    direction LR
+    vc["Lighthouse validator<br/>64 validators"]
+    beacon["Lighthouse beacon node<br/>blobs, safe, finalized"]
+    geth["geth<br/>execution"]
+    vc --> beacon
+    beacon -- "engine API" --> geth
+  end
+
+  batcher -- "reads new L2 blocks" --> reth
+  node -. "signed new blocks, p2p" .-> vnode
+  vreth -. "forwards transactions" .-> reth
+  batcher == "batches as blob transactions" ==> geth
+  node -- "L1 blocks, deposits" --> geth
+  vnode == "L1 blocks and blobs: derives every safe block" ==> L1
+```
+
+The sequencer builds a block every 2 s and gossips it, signed, to the verifier. The
+batcher posts the new blocks to the L1 as blob transactions. Each op-node reads those
+batches back from the L1, so a block moves through three states:
+
+| State | Meaning | Comes from |
+|---|---|---|
+| unsafe | Built by the sequencer; the verifier has it from gossip | The sequencer alone |
+| safe | Derived from a batch on the L1 | The L1; every node derives the same block |
+| finalized | Its batch is in a finalized L1 block | L1 finality, two to three epochs (about 7 to 10 minutes here) |
+
+Security boundaries:
+
+| What | Where it is reachable |
+|---|---|
+| JSON-RPC of geth, the beacon API, both op-reths and both op-nodes | `127.0.0.1` only |
+| Engine APIs, peer-to-peer between the op-nodes | Inside Docker networks only |
+| Sequencer key | The sequencer op-node only, as a secret file |
+| Batcher key | op-batcher only, as a secret file |
+| Deployer key | op-deployer only, through the container environment, while `make l2-deploy` runs |
+| Admin, proposer, challenger and fee recipient keys | No service uses them yet; the proposer and challenger come in stage 2 |
+
 ## Local L1
 
 ```sh
