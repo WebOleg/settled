@@ -2,7 +2,8 @@
 # Shows that Prometheus scrapes every client of the devnet: each of the nine targets is
 # up, and each job reports series. Then Grafana: it is healthy, the admin password from
 # obs-init.sh works, an anonymous visitor can read the dashboard but not change it, and
-# every query of every panel returns data. Waits up to 60 s for the first scrape.
+# every query of every panel returns data and shows only live series. Waits up to 60 s for
+# the first scrape.
 set -euo pipefail
 
 PROM="http://127.0.0.1:9090"
@@ -14,6 +15,12 @@ PASSWORD_FILE="$root/.devnet/observability/grafana-admin.txt"
 
 fail() { echo "obs-check: FAIL: $*"; exit 1; }
 query() { curl -sf -m 5 --data-urlencode "query=$1" "$PROM/api/v1/query"; }
+# The same query over the 30 minutes the dashboard shows by default.
+query_range() {
+  local now; now="$(date +%s)"
+  curl -sf -m 10 --data-urlencode "query=$1" --data-urlencode "start=$((now - 1800))" \
+    --data-urlencode "end=$now" --data-urlencode "step=30" "$PROM/api/v1/query_range"
+}
 
 waited=0
 until targets="$(curl -sf -m 5 "$PROM/api/v1/targets?state=active")" \
@@ -61,17 +68,35 @@ case "$write_status" in 401|403) ;; *) fail "an anonymous visitor could write a 
 echo "viewer           anonymous visitors read the $panels panels and cannot write (HTTP $write_status)"
 
 # Every query of every panel must return data now; an empty panel is a broken panel.
+# Over the 30 minutes on screen it must show the same series as now: a series that has
+# stopped (left behind when a target label is renamed, say) would draw a second line and
+# a second number in a tile. Each selector names its chain, which keeps such series out.
 empty=0
+stale=0
+unpinned=0
 while IFS=$'\t' read -r title expr; do
   n="$(query "$expr" | jq '.data.result | length')" || n=0
   if [ "$n" -eq 0 ]; then
     echo "empty            $title: $expr"
     empty=$((empty + 1))
   fi
+  r="$(query_range "$expr" | jq '.data.result | length')" || r=0
+  if [ "$r" -ne "$n" ]; then
+    echo "stale            $title: $r series over 30 min, $n now: $expr"
+    stale=$((stale + 1))
+  fi
+  selectors="$(printf '%s' "$expr" | grep -o '{' | wc -l | tr -d ' ')"
+  pinned="$(printf '%s' "$expr" | grep -o 'chain="l[12]"' | wc -l | tr -d ' ')"
+  if [ "$selectors" -ne "$pinned" ]; then
+    echo "unpinned         $title: $expr"
+    unpinned=$((unpinned + 1))
+  fi
 done < <(jq -r '[.panels[] | if .type == "row" then (.panels // [])[] else . end][] | .title as $t | .targets[] | [$t, .expr] | @tsv' "$DASHBOARD")
 queries="$(jq '[[.panels[] | if .type == "row" then (.panels // [])[] else . end][] | .targets[]] | length' "$DASHBOARD")"
 [ "$empty" -eq 0 ] || fail "$empty of $queries panel queries return no data"
-echo "panels           all $queries queries of the $panels panels return data"
+[ "$unpinned" -eq 0 ] || fail "$unpinned of $queries panel queries have a selector without chain=\"l1\" or chain=\"l2\""
+[ "$stale" -eq 0 ] || fail "$stale of $queries panel queries show series that have stopped"
+echo "panels           all $queries queries of the $panels panels return data, name their chain and show only live series"
 
 # The home page is this dashboard, so whoever opens Grafana sees the six questions first.
 # A home dashboard read from a file is served as a copy under Grafana's own uid
@@ -87,18 +112,26 @@ printf '%s' "$home" | jq -e --arg uid "$uid" --arg title "$title" '
   || fail "the Grafana home page is not the $uid dashboard: $(printf '%s' "$home" | jq -c '{redirectUri, uid: .dashboard.uid, title: .dashboard.title}')"
 echo "home             $GRAFANA opens the $uid dashboard; direct link $GRAFANA/d/$uid"
 
-# Overview tiles: each must have a value now. Its colour is worked out from the tile's
-# own thresholds in the dashboard file, the same way Grafana colours it.
+# Overview tiles: each must show exactly one number now. Its colour is worked out from the
+# tile's own thresholds in the dashboard file, the same way Grafana colours it.
 red=0
 tiles=0
-while IFS=$'\t' read -r title expr steps; do
+while IFS=$'\t' read -r title expr steps unit decimals; do
   tiles=$((tiles + 1))
-  v="$(query "$expr" | jq -r '.data.result[0].value[1] // "none"')"
-  [ "$v" != "none" ] || fail "overview tile '$title' has no value"
+  result="$(query "$expr")" || fail "overview tile '$title': query failed"
+  n="$(printf '%s' "$result" | jq '.data.result | length')"
+  [ "$n" -eq 1 ] || fail "overview tile '$title' shows $n numbers, want 1"
+  v="$(printf '%s' "$result" | jq -r '.data.result[0].value[1]')"
   colour="$(jq -rn --argjson v "$v" --argjson s "$steps" '[$s[] | select(.value == null or .value <= $v)] | last | .color')"
-  printf 'tile             %-22s %-6s %s\n' "$title" "$colour" "$v"
+  shown="$(jq -rn --argjson v "$v" --argjson d "$decimals" --arg u "$unit" \
+    '(($v * pow(10; $d) | round) / pow(10; $d)) as $r
+     | (if $d > 0 then ($r | tostring | if test("[.]") then . else . + "." end) as $t
+          | ($t | split(".")) as $p | $p[0] + "." + ($p[1] + "00")[0:$d]
+        else ($r | floor | tostring) end)
+       + (if $u == "s" then " s" else ($u | sub("^suffix:"; "")) end)')"
+  printf 'tile             %-22s %-6s %s\n' "$title" "$colour" "$shown"
   [ "$colour" = "green" ] || red=$((red + 1))
-done < <(jq -r '.panels[] | select(.type == "stat") | [.title, .targets[0].expr, (.fieldConfig.defaults.thresholds.steps | tojson)] | @tsv' "$DASHBOARD")
+done < <(jq -r '.panels[] | select(.type == "stat") | [.title, .targets[0].expr, (.fieldConfig.defaults.thresholds.steps | tojson), .fieldConfig.defaults.unit, (.fieldConfig.defaults.decimals // 0)] | @tsv' "$DASHBOARD")
 echo "overview         $((tiles - red)) of $tiles tiles green"
 
 echo "obs-check: ok"

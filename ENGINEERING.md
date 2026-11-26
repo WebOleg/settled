@@ -85,6 +85,8 @@ upgraded in both places in one commit.
 - Every red line is the threshold of an alert, and every alert has a runbook. A tile, an
   alert and its runbook describe one condition.
 - A panel or check that shows nothing fails. Silence is not health.
+- A check looks at what the screen shows: the same queries over the same time range, not
+  only the value now.
 
 ## Go
 

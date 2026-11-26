@@ -30,7 +30,7 @@ L1 and L2 networks and scrapes all nine every 5 seconds.
 |---|---|
 | Metrics ports not published | Metrics reveal balances, peers and internals. Only Prometheus reads them, from inside the Docker networks; only Prometheus itself is published, on 127.0.0.1:9090. |
 | Scrape every 5 s | The L2 makes a block every 2 s and the L1 a slot every 6 s. The usual 15 s would hide most of what happens between two scrapes. |
-| Labels `chain`, `role`, `node` on every target | Dashboards and alerts group by them: the same metric from the sequencer and the verifier is compared by `node`. The first version called the first one `layer`, which collided with op-node's own `layer` label (`l1`, `l2`, `l1_origin`): Prometheus renamed op-node's to `exported_layer`. Target labels must not reuse a name the client already uses. |
+| Labels `chain`, `role`, `node` on every target | Dashboards and alerts group by them: the same metric from the sequencer and the verifier is compared by `node`. The first version called the first one `layer`, which collided with op-node's own `layer` label (`l1`, `l2`, `l1_origin`): Prometheus renamed op-node's to `exported_layer`. Target labels must not reuse a name the client already uses. Renaming the label also left the old series in the database until retention drops them, so every query names its chain (`chain="l2"`); a series without the label is never shown. |
 | Prometheus v3.16.0, pinned by digest | The current stable release. Its config is checked with the `promtool` of the same image before every start. |
 | Seven days of retention in a Docker volume | Enough for a week of devnet history; `make reset` deletes it with the chain it describes. |
 | Started by `make up`, stopped first by every `down` | It joins the networks of both layers, which cannot be removed while it is attached. |
@@ -48,8 +48,9 @@ version put sixteen panels on one screen, and it was hard to see where to look. 
 dashboard follows three rules:
 
 1. One screen answers "is the chain healthy?" with six tiles. Each tile asks one
-   question in plain words, shows one number, and is green or red. There is no third
-   colour to interpret.
+   question in plain words, shows one number with its unit, and is green or red. There
+   is no third colour to interpret. A tile reads the value now (an instant query) and
+   aggregates it to one series, so it can never split into several numbers.
 2. Everything else sits below in rows that stay closed until opened. Each tile says
    which row to open when it is red.
 3. The red line of a tile is the threshold of the alert for the same question (next
@@ -82,6 +83,10 @@ dashboard follows three rules:
 `make obs-check` shows that all nine targets are up and each of the seven jobs reports
 series; that Grafana is healthy, the admin password works and the home page is this
 dashboard; that an anonymous visitor reads every panel and cannot write; that every query
-of every panel, closed rows included, returns data from Prometheus; and it prints each
-tile with its colour, worked out from the tile's thresholds in the file. An empty panel
-fails the check, so a renamed metric is noticed at once.
+of every panel, closed rows included, returns data from Prometheus, names its chain and
+shows over the 30 minutes on screen the same series as now; and it prints each tile with
+its one number, unit and colour, worked out from the tile's thresholds in the file. An
+empty panel fails the check, so a renamed metric is noticed at once. A stopped series
+fails it too: the first overview checked only the value now, while the screen showed 30
+minutes, and three tiles split into a live number and the last numbers of series left
+behind by the label rename.

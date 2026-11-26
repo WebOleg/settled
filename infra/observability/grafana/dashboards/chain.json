@@ -51,15 +51,15 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(op_node_default_refs_number{layer=\"l2\",type=\"l2_unsafe\",node=\"sequencer\"}[1m]) * 60",
+          "expr": "max(rate(op_node_default_refs_number{chain=\"l2\",node=\"sequencer\",layer=\"l2\",type=\"l2_unsafe\"}[1m])) * 60",
           "legendFormat": "blocks/min",
-          "range": true,
-          "instant": false
+          "range": false,
+          "instant": true
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
+          "unit": "suffix: blocks/min",
           "decimals": 0,
           "thresholds": {
             "mode": "absolute",
@@ -117,10 +117,10 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "time() - op_batcher_default_txmgr_last_confirm_unix",
+          "expr": "time() - max(op_batcher_default_txmgr_last_confirm_unix{chain=\"l2\"})",
           "legendFormat": "",
-          "range": true,
-          "instant": false
+          "range": false,
+          "instant": true
         }
       ],
       "fieldConfig": {
@@ -183,15 +183,15 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max(op_node_default_refs_number{layer=\"l2\",type=\"l2_unsafe\",node=\"sequencer\"}) - max(op_node_default_refs_number{layer=\"l2\",type=\"l2_unsafe\",node=\"verifier\"})",
+          "expr": "max(op_node_default_refs_number{chain=\"l2\",node=\"sequencer\",layer=\"l2\",type=\"l2_unsafe\"}) - max(op_node_default_refs_number{chain=\"l2\",node=\"verifier\",layer=\"l2\",type=\"l2_unsafe\"})",
           "legendFormat": "blocks behind",
-          "range": true,
-          "instant": false
+          "range": false,
+          "instant": true
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
+          "unit": "suffix: blocks",
           "decimals": 0,
           "thresholds": {
             "mode": "absolute",
@@ -249,10 +249,10 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "time() - op_proposer_default_txmgr_last_confirm_unix",
+          "expr": "time() - max(op_proposer_default_txmgr_last_confirm_unix{chain=\"l2\"})",
           "legendFormat": "",
-          "range": true,
-          "instant": false
+          "range": false,
+          "instant": true
         }
       ],
       "fieldConfig": {
@@ -317,13 +317,13 @@
           },
           "expr": "max(chain_head_block{chain=\"l1\"}) - max(chain_head_finalized{chain=\"l1\"})",
           "legendFormat": "blocks to finality",
-          "range": true,
-          "instant": false
+          "range": false,
+          "instant": true
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
+          "unit": "suffix: blocks",
           "decimals": 0,
           "thresholds": {
             "mode": "absolute",
@@ -381,15 +381,15 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "min(op_batcher_default_balance or op_proposer_default_balance)",
+          "expr": "min(op_batcher_default_balance{chain=\"l2\"} or op_proposer_default_balance{chain=\"l2\"})",
           "legendFormat": "ETH, lowest",
-          "range": true,
-          "instant": false
+          "range": false,
+          "instant": true
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
+          "unit": "suffix: ETH",
           "decimals": 2,
           "thresholds": {
             "mode": "absolute",
@@ -459,7 +459,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "op_node_default_refs_number{layer=\"l2\",type=~\"l2_unsafe|l2_safe|l2_finalized\"}",
+              "expr": "op_node_default_refs_number{chain=\"l2\",layer=\"l2\",type=~\"l2_unsafe|l2_safe|l2_finalized\"}",
               "legendFormat": "{{node}} {{type}}",
               "range": true,
               "instant": false
@@ -511,7 +511,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "op_node_default_refs_number{layer=\"l2\",type=\"l2_unsafe\"} - ignoring(type) op_node_default_refs_number{layer=\"l2\",type=\"l2_safe\"}",
+              "expr": "op_node_default_refs_number{chain=\"l2\",layer=\"l2\",type=\"l2_unsafe\"} - ignoring(type) op_node_default_refs_number{chain=\"l2\",layer=\"l2\",type=\"l2_safe\"}",
               "legendFormat": "{{node}} unsafe - safe",
               "range": true,
               "instant": false
@@ -522,7 +522,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "op_node_default_refs_number{layer=\"l2\",type=\"l2_unsafe\"} - ignoring(type) op_node_default_refs_number{layer=\"l2\",type=\"l2_finalized\"}",
+              "expr": "op_node_default_refs_number{chain=\"l2\",layer=\"l2\",type=\"l2_unsafe\"} - ignoring(type) op_node_default_refs_number{chain=\"l2\",layer=\"l2\",type=\"l2_finalized\"}",
               "legendFormat": "{{node}} unsafe - finalized",
               "range": true,
               "instant": false
@@ -574,7 +574,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "op_node_default_p2p_peer_count",
+              "expr": "op_node_default_p2p_peer_count{chain=\"l2\"}",
               "legendFormat": "{{node}}",
               "range": true,
               "instant": false
@@ -714,7 +714,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "rate(vc_signed_beacon_blocks_total[5m]) * 60",
+              "expr": "rate(vc_signed_beacon_blocks_total{chain=\"l1\"}[5m]) * 60",
               "legendFormat": "blocks/min",
               "range": true,
               "instant": false
@@ -725,7 +725,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "rate(vc_signed_attestations_total[5m]) * 60",
+              "expr": "rate(vc_signed_attestations_total{chain=\"l1\"}[5m]) * 60",
               "legendFormat": "attestations/min",
               "range": true,
               "instant": false
@@ -791,7 +791,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "op_batcher_default_pending_blocks_count",
+              "expr": "op_batcher_default_pending_blocks_count{chain=\"l2\"}",
               "legendFormat": "{{stage}}",
               "range": true,
               "instant": false
@@ -843,7 +843,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "rate(op_batcher_default_txmgr_confirm_total[5m]) * 60",
+              "expr": "rate(op_batcher_default_txmgr_confirm_total{chain=\"l2\"}[5m]) * 60",
               "legendFormat": "confirmed/min",
               "range": true,
               "instant": false
@@ -854,7 +854,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "op_batcher_default_txmgr_blob_basefee_wei",
+              "expr": "op_batcher_default_txmgr_blob_basefee_wei{chain=\"l2\"}",
               "legendFormat": "blob base fee (wei)",
               "range": true,
               "instant": false
@@ -919,7 +919,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "time() - op_proposer_default_proposed_sequence_number",
+              "expr": "time() - op_proposer_default_proposed_sequence_number{chain=\"l2\"}",
               "legendFormat": "seconds",
               "range": true,
               "instant": false
@@ -971,7 +971,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "op_batcher_default_balance",
+              "expr": "op_batcher_default_balance{chain=\"l2\"}",
               "legendFormat": "batcher",
               "range": true,
               "instant": false
@@ -982,7 +982,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "op_proposer_default_balance",
+              "expr": "op_proposer_default_balance{chain=\"l2\"}",
               "legendFormat": "proposer",
               "range": true,
               "instant": false
@@ -1048,7 +1048,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "reth_chain_head_gas_used",
+              "expr": "reth_chain_head_gas_used{chain=\"l2\"}",
               "legendFormat": "{{node}}",
               "range": true,
               "instant": false
@@ -1100,7 +1100,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "increase(op_node_default_derivation_errors_total[15m])",
+              "expr": "increase(op_node_default_derivation_errors_total{chain=\"l2\"}[15m])",
               "legendFormat": "derivation errors {{node}}",
               "range": true,
               "instant": false
@@ -1111,7 +1111,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "increase(reth_blockchain_tree_reorgs[15m])",
+              "expr": "increase(reth_blockchain_tree_reorgs{chain=\"l2\"}[15m])",
               "legendFormat": "reorgs {{node}}",
               "range": true,
               "instant": false
