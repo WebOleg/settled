@@ -1,7 +1,8 @@
 # Design: local devnet
 
 How the local network is built and why. This file covers what exists in the repository:
-the L1, and the operator keys of the L2. It grows as the L2 is added.
+the L1, and the operator keys and contract deployment of the L2. It grows as the L2 is
+added.
 
 ## Goal
 
@@ -80,6 +81,43 @@ How the keys are handled, in [internal/rolekeys](../../internal/rolekeys):
 `make l2-fund` tops the four paying accounts up to the balances above from the first
 devnet account, in [internal/funding](../../internal/funding). It sends only the
 difference, so running it again sends nothing to an account that is already funded.
+
+## L2: contract deployment
+
+`make l2-deploy` deploys the L2 contracts to the local L1 with op-deployer and exports
+`genesis.json`, `rollup.json` and `l1-addresses.json` into `.devnet/l2/deployer`.
+
+| Part | Choice | Reason |
+|---|---|---|
+| Tool | op-deployer v0.9.0, image pinned by digest `sha256:887ddaae...a0e7c8` | The latest stable release with a published image. It deploys op-contracts v9.0.0. |
+| Intent type | `custom` | `standard-overrides` refuses an L1 it does not know (`unsupported chainID: 3151908`) |
+| L2 chain id | 420420 | Not used by a public network |
+| Roles | One operator address per role, see the table above | The intent is rendered by [internal/l2intent](../../internal/l2intent), which refuses a missing role, a zero address, or a role given to the deployer |
+| Deployer key | Passed to the container as `-e DEPLOYER_PRIVATE_KEY` with no value | The key never appears on a command line or in the process list |
+| Reruns | A finished deployment in `state.json` is left alone; a partial one is deleted and redone | A rerun never deploys a second set of contracts |
+
+Chain parameters in the intent:
+
+| Parameter | Value | Source |
+|---|---|---|
+| `eip1559Denominator` | 50 | op-deployer standard configuration |
+| `eip1559DenominatorCanyon` | 250 | op-deployer standard configuration |
+| `eip1559Elasticity` | 6 | op-deployer standard configuration |
+| `gasLimit` | 60,000,000 | op-deployer default; the standard configuration allows up to 200,000,000 |
+| `operatorFeeScalar`, `operatorFeeConstant` | 0 | A non-zero operator fee makes a chain non-standard |
+| `minBaseFee` | 0 | Jovian default |
+| `daFootprintGasScalar` | 400 | Jovian treats 0 as 400; written out so the file states the value in use |
+
+Why not another op-deployer version, as checked on 2026-11-26:
+
+| Option | Why not |
+|---|---|
+| v0.10.0 (op-contracts v10.0.0, Upgrade 22) | Released the day before with no binaries and no image in the registry. Building it from source needs files the build generates (`superchain-configs.zip`, forge artifacts), which means the full Optimism contracts build. |
+| The `latest` image tag | It is op-deployer v0.6.0 from April 2026, not the latest release |
+| Pre-release tags (`-dev-test`, `-allowlist`, `-op-private-test`) | Test builds, not releases |
+
+Moving to op-contracts v10.0.0 is an upgrade of a running chain, which is a stage of the
+roadmap of its own.
 
 ## Alternatives rejected
 

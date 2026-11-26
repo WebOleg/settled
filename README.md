@@ -14,8 +14,8 @@ Everything runs on one machine and needs no cloud account.
 
 ## Status
 
-Stage 1 is in progress. The local L1 runs. The L2 does not run yet; its operator keys
-and their funding exist. This file
+Stage 1 is in progress. The local L1 runs. The L2 contracts are deployed on it; the L2
+nodes do not run yet. This file
 describes only what exists and grows with the code.
 
 The rules the code follows are in [ENGINEERING.md](ENGINEERING.md). The plan is in
@@ -34,16 +34,19 @@ Docker, curl, jq and Go. Services, endpoints and files are described in
 [infra/devnet/l1/README.md](infra/devnet/l1/README.md); the reasons behind the setup are
 in [docs/design/devnet.md](docs/design/devnet.md).
 
-## L2 operator keys
+## L2 operator keys and contracts
 
 ```sh
 make l2-keys
 make l2-fund
+make l2-deploy
 ```
 
 One key per operator role, kept in `.devnet/l2/keys` and readable only by its owner.
-`l2-fund` tops up the accounts that pay gas on the L1. The roles and the rules for the
-keys are in [docs/design/devnet.md](docs/design/devnet.md#l2-operator-roles-and-keys).
+`l2-fund` tops up the accounts that pay gas on the L1. `l2-deploy` deploys the L2
+contracts with op-deployer and exports the L2 genesis and rollup config. The roles, the
+key rules and the deployment choices are in
+[docs/design/devnet.md](docs/design/devnet.md#l2-operator-roles-and-keys).
 
 ## Checks
 
