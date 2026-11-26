@@ -1,9 +1,11 @@
 # Observability for the devnet. Prometheus scrapes every client of the L1 and the L2
-# over their Docker networks; the metrics ports are not published, only Prometheus is,
-# on 127.0.0.1. Images are pinned by digest.
+# over their Docker networks; Grafana shows the dashboards in this repository. The
+# metrics ports are not published; Prometheus and Grafana are, on 127.0.0.1 only. Images
+# are pinned by digest.
 name: settled-obs
 
 networks:
+  default: {}
   l1:
     name: settled-l1_default
     external: true
@@ -13,12 +15,14 @@ networks:
 
 volumes:
   prometheus: {}
+  grafana: {}
 
 services:
   prometheus:
     image: prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
     restart: unless-stopped
     networks:
+      - default
       - l1
       - l2
     command:
@@ -31,3 +35,37 @@ services:
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus:/prometheus
+
+  grafana:
+    image: grafana/grafana:13.3.2@sha256:81556409ba48b2b922e0adb69a2511337d8ba7578f11962eefa6149a2d815101
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      # Anyone on this machine may look; nobody may change anything in the UI. Dashboards
+      # and the data source come from files in this repository.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # The admin password is read from a file written once by obs-init.sh; it is not in
+      # this file, an env file or docker inspect.
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/chain.json
+    secrets:
+      - grafana_admin
+    ports:
+      - 127.0.0.1:3000:3000
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana:/var/lib/grafana
+
+secrets:
+  grafana_admin:
+    file: ../../.devnet/observability/grafana-admin.txt

@@ -1,0 +1,11 @@
+# Dashboards are files in this repository; Grafana loads them and refuses edits in the UI,
+# so what is shown is what is reviewed.
+apiVersion: 1
+providers:
+  - name: settled
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

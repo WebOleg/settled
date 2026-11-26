@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help up down status reset obs-up obs-check obs-down check check-docs check-images check-shell check-secrets check-go l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-logs l2-down l2-reset
+.PHONY: help up down status reset obs-up obs-check obs-down obs-password check check-docs check-images check-shell check-secrets check-go l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-logs l2-down l2-reset
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
@@ -38,6 +38,7 @@ reset: ## Stop everything and delete chain data, metrics and the deployment; rol
 	@$(L2) down
 	@$(L1) down
 	@scripts/devnet/l2-init.sh --reset
+	@scripts/observability/obs-init.sh --reset
 	@scripts/devnet/l2-deploy.sh --reset
 	@scripts/devnet/l1-init.sh --reset
 
@@ -122,12 +123,16 @@ l2-reset: ## Stop the L2 services and delete the chain data (keys and deployment
 	@$(L2) down
 	@scripts/devnet/l2-init.sh --reset
 
-obs-up: ## Start Prometheus, scraping every client of the L1 and the L2; needs l1-up and l2-up
+obs-up: ## Start Prometheus and Grafana; needs l1-up and l2-up
+	@scripts/observability/obs-init.sh
 	@docker run --rm --entrypoint promtool -v "$(CURDIR)/infra/observability:/c:ro" $(PROM_IMAGE) check config /c/prometheus.yml
 	@$(OBS) up -d --quiet-pull
 
-obs-check: ## Show that Prometheus scrapes all nine clients and each reports series
+obs-check: ## Show that all nine clients are scraped and every dashboard panel has data
 	@scripts/observability/obs-check.sh
 
-obs-down: ## Stop Prometheus and keep its data
+obs-down: ## Stop Prometheus and Grafana and keep their data
 	@$(OBS) down
+
+obs-password: ## Copy the Grafana admin password to the clipboard, without printing it
+	@tr -d '[:space:]' < .devnet/observability/grafana-admin.txt | pbcopy && echo "obs-password: copied"

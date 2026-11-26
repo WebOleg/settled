@@ -1,0 +1,13 @@
+# The one data source: Prometheus in the same Compose project. Its uid is fixed so the
+# dashboards in this repository can refer to it.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 5s
