@@ -49,3 +49,16 @@ exist.
 - `.gitignore` keeps env files, key files and local runtime data out of git.
 - A secret that reaches a commit is treated as leaked: it is rotated, not only removed
   from history.
+
+## Local checks
+
+`make check` runs every check. A commit is pushed only after it passes. `make help`
+lists the targets.
+
+| Target | Tool | Fails on |
+|---|---|---|
+| `check-docs` | [scripts/check-docs.sh](scripts/check-docs.sh) | CRLF line endings, a missing final newline, trailing spaces outside Markdown, an em dash in Markdown, a relative link to a file that does not exist |
+| `check-shell` | shellcheck | any finding in a tracked shell script |
+| `check-secrets` | gitleaks | a secret anywhere in the git history; findings are printed redacted |
+
+The checks were last run with gitleaks 8.30.1 and shellcheck 0.11.0.

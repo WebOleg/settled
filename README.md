@@ -14,11 +14,20 @@ Everything runs on one machine and needs no cloud account.
 
 ## Status
 
-Stage 0: repository and conventions. Nothing runs yet. This file describes only what
-exists and grows with the code.
+Stage 0 is done: the repository, its rules and the local checks. No chain or service
+runs yet. This file describes only what exists and grows with the code.
 
 The rules the code follows are in [ENGINEERING.md](ENGINEERING.md). The plan is in
 [ROADMAP.md](ROADMAP.md).
+
+## Checks
+
+```sh
+make check
+```
+
+Requires gitleaks and shellcheck. What each check does is in
+[ENGINEERING.md](ENGINEERING.md#local-checks).
 
 ## License
 
