@@ -1,9 +1,10 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help check check-docs check-shell check-secrets check-go l1-up l1-down l1-reset l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify
+.PHONY: help check check-docs check-shell check-secrets check-go l1-up l1-down l1-reset l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-logs l2-down l2-reset
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
+L2 := docker compose -f infra/devnet/l2/compose.yaml
 
 help: ## List the targets
 	@awk 'BEGIN { FS = ":.*## " } /^[a-z0-9-]+:.*## / { printf "  %-14s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -59,3 +60,20 @@ l2-deploy: ## Deploy the L2 contracts to the local L1 with op-deployer (once)
 
 l2-verify: ## Check the deployed L2 contracts on the L1: owners, operators, parameters
 	@go run ./cmd/l2-verify
+
+l2-up: ## Start the L2 sequencer (op-reth and op-node); needs l1-up and l2-deploy
+	@scripts/devnet/l2-init.sh
+	@$(L2) up -d --quiet-pull
+
+l2-check: ## Show that the L2 answers, advances, follows the L1 and agrees on the head
+	@scripts/devnet/l2-check.sh
+
+l2-logs: ## Follow the logs of the L2 sequencer
+	@$(L2) logs --follow --tail 50
+
+l2-down: ## Stop the L2 sequencer and keep its data
+	@$(L2) down
+
+l2-reset: ## Stop the L2 sequencer and delete its chain data (keys and deployment kept)
+	@$(L2) down
+	@scripts/devnet/l2-init.sh --reset

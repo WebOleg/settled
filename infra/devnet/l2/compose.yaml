@@ -1,0 +1,78 @@
+# Devnet L2 sequencer: op-reth (execution) and op-node (rollup node, sequencing).
+# Reads the chain config written by make l2-deploy and joins the L1 network to reach
+# geth and the beacon node. Ports are bound to 127.0.0.1 only; the engine API between
+# op-node and op-reth is not published at all. Images are pinned by digest.
+name: settled-l2
+
+x-deployer: &deployer ../../../.devnet/l2/deployer:/deployer:ro
+x-l1-chain: &l1chain ../../../.devnet/l2/sequencer/l1-chain-config.json:/l1/chain-config.json:ro
+x-jwt: &jwt ../../../.devnet/l2/sequencer/jwt.hex:/secrets/jwt.hex:ro
+
+networks:
+  default: {}
+  l1:
+    name: settled-l1_default
+    external: true
+
+services:
+  op-reth:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-reth:v2.10.0@sha256:885007dce21382f44269734c7b02f065c8cbc12c7b18c3aeb35e1e93cc045997
+    restart: unless-stopped
+    command:
+      - node
+      - --chain=/deployer/genesis.json
+      - --datadir=/data
+      - --http
+      - --http.addr=0.0.0.0
+      - --http.port=8545
+      - --http.api=eth,net,web3,txpool,debug
+      - --ws
+      - --ws.addr=0.0.0.0
+      - --ws.port=8546
+      - --ws.api=eth,net,web3
+      - --authrpc.addr=0.0.0.0
+      - --authrpc.port=8551
+      - --authrpc.jwtsecret=/secrets/jwt.hex
+      - --max-outbound-peers=0
+      - --max-inbound-peers=0
+    ports:
+      - 127.0.0.1:18545:8545
+      - 127.0.0.1:18546:8546
+    volumes:
+      - *deployer
+      - *jwt
+      - ../../../.devnet/l2/sequencer/op-reth:/data
+
+  op-node:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.21.0@sha256:edd773e1351823b8ec950b59c5382b11d4032d3f8503dfc11caa5f23924e3b84
+    restart: unless-stopped
+    depends_on:
+      - op-reth
+    networks:
+      - default
+      - l1
+    command:
+      - op-node
+      - --l1=http://geth:8545
+      - --l1.beacon=http://beacon:4000
+      - --l2=http://op-reth:8551
+      - --l2.jwt-secret=/secrets/jwt.hex
+      - --rollup.config=/deployer/rollup.json
+      # The local L1 is unknown to op-node; without its chain config op-node cannot know
+      # the L1 forks and blob parameters. It takes the chain config object only, not the
+      # whole genesis file (l2-init.sh extracts it).
+      - --rollup.l1-chain-config=/l1/chain-config.json
+      - --sequencer.enabled
+      - --safedb.path=/data/safedb
+      # No peers yet: the sequencer key is only needed to sign blocks for p2p gossip,
+      # so it is not given to this container until a second node exists.
+      - --p2p.disable
+      - --rpc.addr=0.0.0.0
+      - --rpc.port=9545
+    ports:
+      - 127.0.0.1:19545:9545
+    volumes:
+      - *deployer
+      - *l1chain
+      - *jwt
+      - ../../../.devnet/l2/sequencer/op-node:/data

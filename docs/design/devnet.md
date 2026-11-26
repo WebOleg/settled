@@ -1,8 +1,8 @@
 # Design: local devnet
 
 How the local network is built and why. This file covers what exists in the repository:
-the L1, and the operator keys and contract deployment of the L2. It grows as the L2 is
-added.
+the L1, and the operator keys, contract deployment and sequencer of the L2. It grows as
+the L2 is added.
 
 ## Goal
 
@@ -165,6 +165,24 @@ for the contracts:
 | `rollup.json` | `l1_system_config_address` | the deployed SystemConfigProxy |
 | `rollup.json` | `deposit_contract_address` | the deployed OptimismPortalProxy |
 | `rollup.json` | `genesis.system_config.batcherAddr` | `batcher` |
+
+## L2: sequencer
+
+`make l2-up` starts op-reth v2.10.0 and op-node v1.21.0, both pinned by digest. Details
+of the services, endpoints and files are in
+[infra/devnet/l2/README.md](../../infra/devnet/l2/README.md).
+
+| Choice | Reason |
+|---|---|
+| op-reth as execution client | op-geth reached end of support on 31 May 2026 and does not follow the chain after the Karst hardfork; op-reth is the supported client |
+| `--rollup.l1-chain-config` gets the `config` object of the L1 genesis, limited to the fields op-node knows | op-node knows the forks and blob parameters of public L1s only; the local L1 has to be described to it. op-node refuses the whole genesis file (`unknown field "config"`), so `l2-init.sh` extracts the object. op-node also decodes it strictly, and the generator writes `terminalTotalDifficultyPassed`, which go-ethereum has removed; `l2-init.sh` keeps only the fields of go-ethereum's `ChainConfig` at commit `3dee18e7108c`, the version op-node v1.21.0 is built on, and prints what it drops. The list is rechecked when op-node is upgraded. |
+| `--safedb.path` set | Keeps which L2 block became safe at which L1 block, which the proposer and challenger ask for |
+| One engine API secret per op-node and op-reth pair, mode 600 | A secret shared across pairs would let one node's credentials drive another engine |
+| Peer-to-peer off, no sequencer key in the container | The sequencer key signs unsafe blocks for gossip to other nodes. With no other node there is nothing to gossip to, and a container gets no key it does not use. |
+| Ports 18545, 18546, 19545 on 127.0.0.1 | Separate from the L1 ports; nothing listens on other interfaces |
+
+Until a batcher posts batches to the L1, the safe and finalized L2 heads stay at genesis.
+`make l2-check` prints them and does not treat that as a failure.
 
 ## Alternatives rejected
 

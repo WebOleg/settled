@@ -14,8 +14,8 @@ Everything runs on one machine and needs no cloud account.
 
 ## Status
 
-Stage 1 is in progress. The local L1 runs. The L2 contracts are deployed on it; the L2
-nodes do not run yet. This file
+Stage 1 is in progress. The local L1 runs. The L2 contracts are deployed on it and the
+L2 sequencer produces blocks; no batches are posted to the L1 yet. This file
 describes only what exists and grows with the code.
 
 The rules the code follows are in [ENGINEERING.md](ENGINEERING.md). The plan is in
@@ -50,6 +50,16 @@ reads the contracts on the L1 and the exported chain config, and checks every ow
 operator and parameter against the intent. The roles, the
 key rules and the deployment choices are in
 [docs/design/devnet.md](docs/design/devnet.md#l2-operator-roles-and-keys).
+
+## Local L2
+
+```sh
+make l2-up
+make l2-check
+```
+
+The L2 sequencer, op-reth and op-node, built from the deployment above. Services,
+endpoints and files are in [infra/devnet/l2/README.md](infra/devnet/l2/README.md).
 
 ## Checks
 
