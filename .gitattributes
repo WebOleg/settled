@@ -1,0 +1,5 @@
+# One line ending everywhere, so diffs and hashes match on every machine.
+* text=auto eol=lf
+*.sh text eol=lf
+*.png binary
+*.jpg binary

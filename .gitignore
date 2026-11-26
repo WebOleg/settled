@@ -1,0 +1,31 @@
+# Secrets are never committed. Keys live in the OS keychain or outside the repo.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+keystore/
+secrets/
+
+# OS and editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Go build and test output
+/bin/
+/dist/
+*.test
+*.out
+coverage.*
+
+# Foundry build output
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+
+# Local runtime data: devnet chain data, databases, logs
+/.devnet/
+/.data/
+*.log
