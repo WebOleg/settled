@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help up down status reset obs-up obs-check obs-down check check-docs check-shell check-secrets check-go l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-logs l2-down l2-reset
+.PHONY: help up down status reset obs-up obs-check obs-down check check-docs check-images check-shell check-secrets check-go l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-logs l2-down l2-reset
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
@@ -41,10 +41,13 @@ reset: ## Stop everything and delete chain data, metrics and the deployment; rol
 	@scripts/devnet/l2-deploy.sh --reset
 	@scripts/devnet/l1-init.sh --reset
 
-check: check-docs check-shell check-secrets check-go ## Run every local check
+check: check-docs check-images check-shell check-secrets check-go ## Run every local check
 
 check-docs: ## Formatting and documentation rules on every tracked file
 	@scripts/check-docs.sh
+
+check-images: ## Every container image pinned by digest
+	@scripts/check-images.sh
 
 check-shell: ## shellcheck on every tracked shell script
 	@files="$$(git ls-files '*.sh')"; \

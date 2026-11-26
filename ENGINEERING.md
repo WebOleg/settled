@@ -49,6 +49,9 @@ exist.
 - `.gitignore` keeps env files, key files and local runtime data out of git.
 - A secret that reaches a commit is treated as leaked: it is rotated, not only removed
   from history.
+- Every container image is pinned by digest; the tag is kept for the reader. A tag
+  can be moved to other content, a digest cannot. A digest is added only after it was
+  compared with the one the registry serves for the tag.
 - Key files are created readable by their owner only (mode 600, in a directory with
   mode 700) and are never overwritten. A key file that others can read is refused, not
   fixed silently.
@@ -63,6 +66,7 @@ targets.
 | Target | Tool | Fails on |
 |---|---|---|
 | `check-docs` | [scripts/check-docs.sh](scripts/check-docs.sh) | CRLF line endings, a missing final newline, trailing spaces outside Markdown, an em dash in Markdown, a relative link to a file that does not exist |
+| `check-images` | [scripts/check-images.sh](scripts/check-images.sh) | a container image in a compose file, a script or the Makefile that is not pinned by digest |
 | `check-shell` | shellcheck | any finding in a tracked shell script |
 | `check-secrets` | gitleaks | a secret anywhere in the git history; findings are printed redacted |
 | `check-go` | gofmt, go vet, go test | an unformatted file, a vet finding or a failing test |

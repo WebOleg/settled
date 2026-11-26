@@ -18,11 +18,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 
 	"github.com/WebOleg/settled/internal/chaincall"
 	"github.com/WebOleg/settled/internal/l2intent"
+	"github.com/WebOleg/settled/internal/portal"
 	"github.com/WebOleg/settled/internal/rolekeys"
 )
 
@@ -179,11 +181,33 @@ func run(ctx context.Context, rpcURL, dir, rolesFile string) (int, int, error) {
 		fmt.Printf("ok    %-56s %s holds none of the above\n", "deployer holds no role", deployer)
 	}
 
+	// The portal must refuse to pay a withdrawal nobody proved, and say why. This also
+	// shows that revert reasons come back by name, which l2-withdraw relies on.
+	name := "OptimismPortalProxy refuses an unproven withdrawal"
+	data, err := portal.Finalize(portal.WithdrawalTx{
+		Nonce: big.NewInt(0), Sender: deployer, Target: deployer,
+		Value: big.NewInt(0), GasLimit: big.NewInt(0), Data: []byte{},
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	portalAddr := contracts["OptimismPortalProxy"]
+	_, err = client.EstimateGas(ctx, ethereum.CallMsg{From: deployer, To: &portalAddr, Data: data})
+	if err == nil {
+		fmt.Printf("FAIL  %-56s it would finalize\n", name)
+		failed++
+	} else if reason := portal.RevertReason(err); reason != "OptimismPortal_Unproven" {
+		fmt.Printf("FAIL  %-56s refused with %s, want OptimismPortal_Unproven\n", name, reason)
+		failed++
+	} else {
+		fmt.Printf("ok    %-56s %s\n", name, reason)
+	}
+
 	fileFailed, fileTotal, err := checkChainConfig(dir, contracts, roles)
 	if err != nil {
 		return 0, 0, err
 	}
-	return failed + fileFailed, len(checks) + 1 + fileTotal, nil
+	return failed + fileFailed, len(checks) + 2 + fileTotal, nil
 }
 
 // fileCheck is one expected value at a path inside genesis.json or rollup.json.

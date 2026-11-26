@@ -62,3 +62,20 @@ func TestSentMessageSlot(t *testing.T) {
 		t.Fatalf("got %s, want %s", got, want)
 	}
 }
+
+// Selectors computed independently from the error names.
+func TestErrorName(t *testing.T) {
+	cases := map[string]string{
+		"0x730a1074":         "OptimismPortal_AlreadyFinalized",
+		"d9bc01be":           "OptimismPortal_ProofNotOldEnough",
+		"0xCCA6AFDA":         "OptimismPortal_Unproven",
+		"0x2e57ef3a00000000": "OptimismPortal_InvalidMerkleProof",
+		"0x12345678":         "",
+		"0x":                 "",
+	}
+	for data, want := range cases {
+		if got := ErrorName(data); got != want {
+			t.Errorf("ErrorName(%q) = %q, want %q", data, got, want)
+		}
+	}
+}

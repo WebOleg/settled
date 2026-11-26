@@ -179,6 +179,7 @@ On the L1, read from the contracts:
 | AnchorStateRegistry | `disputeGameFinalityDelaySeconds()` | 30 |
 | PreimageOracle | `challengePeriod()` | 30 |
 | DelayedWETH (permissioned games) | `delay()` | 60 |
+| OptimismPortal | `finalizeWithdrawalTransaction` of a withdrawal nobody proved, as `eth_estimateGas` | refused with `OptimismPortal_Unproven`, read by name from the revert data |
 
 It also fails if the deployer address holds any of these roles.
 
@@ -272,7 +273,7 @@ against such a claim once its game has resolved.
 | Game type 5, `SUPER_PERMISSIONED_CANNON` | The type the deployment respects. Only the proposer can create a game, and the game resolves for the proposer the moment it is created: it has no clock, no bond and no challenge step. A wrong root is removed by the guardian, who blacklists the game in the AnchorStateRegistry during the finality delay, before any withdrawal can use it. Safety rests on the proposer and on someone checking every game in time. |
 | `--superroot-rpcs` pointing at the verifier's op-node | Game type 5 needs super roots, and op-node serves `superroot_atTimestamp` for a single chain. The proposer reads from the node that derives the chain from the L1, not from the sequencer that built it, so it never proposes what only the sequencer has seen. |
 | Finalized L2 only (`--allow-non-finalized` off) | A proposal covers only blocks whose batches are in finalized L1 blocks, so an L1 reorg cannot invalidate it. The first game appears once the L1 has finalized, about 10 minutes after a new devnet starts. |
-| `--proposal-interval=60s` | Differs from production, where a proposal is made about once an hour; each game costs L1 gas and a bond. |
+| `--proposal-interval=60s` | Differs from production, where a proposal is made about once an hour; each game costs L1 gas. It is a minimum: a game is made only when the finalized L2 head has moved, and L1 finality moves in steps of an epoch or two, so games come about every 6 minutes here, about 200 L2 blocks apart. |
 | `--num-confirmations=4` | As for the batcher: this L1 does not reorg on its own. |
 | The key as a Compose secret | As for the batcher and the sequencer: only this container gets it, and it is not in `docker inspect` or the process list. |
 | The factory address in an env file | It changes with every deployment; `l2-init.sh` writes it from `l1-addresses.json`. It is not a secret. |

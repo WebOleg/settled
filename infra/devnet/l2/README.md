@@ -36,7 +36,7 @@ and the deployment (`make l2-deploy`).
 | `op-batcher` | `op-batcher:v1.19.0`, pinned by digest | Posts L2 blocks to the L1 as blob transactions |
 | `verifier-op-reth` | `op-reth:v2.10.0`, pinned by digest | Execution client of the verifier; forwards transactions to the sequencer |
 | `verifier-op-node` | `op-node:v1.21.0`, pinned by digest | Rollup node in verifier mode |
-| `op-proposer` | `op-proposer:v1.17.1`, pinned by digest | Posts the verifier's super roots to the L1 as dispute games, every 60 s |
+| `op-proposer` | `op-proposer:v1.17.1`, pinned by digest | Posts the verifier's super roots of finalized state to the L1 as dispute games, at most once a minute |
 
 ## Endpoints
 

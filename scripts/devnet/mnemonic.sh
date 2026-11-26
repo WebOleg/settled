@@ -6,7 +6,7 @@
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
-gen_image="ethpandaops/ethereum-genesis-generator:6.2.9"
+gen_image="ethpandaops/ethereum-genesis-generator:6.2.9@sha256:90c046fbc50da48b0a642e48f00764da59275c889b34e338cbcea242f1d7f6fd"
 values="$root/infra/devnet/l1/values.env"
 
 # shellcheck disable=SC2016

@@ -22,13 +22,13 @@ deployment: both belong to this L1 and are useless after it is replaced.
 
 | Service | Image | Role |
 |---|---|---|
-| `geth-init` | `ethereum/client-go:v1.17.10` | Writes the genesis block into the execution database, then exits |
-| `geth` | `ethereum/client-go:v1.17.10` | Execution client |
-| `beacon` | `sigp/lighthouse:v8.3.3` | Beacon node |
-| `validator` | `sigp/lighthouse:v8.3.3` | Validator client for all 64 validators |
+| `geth-init` | `ethereum/client-go:v1.17.10`, pinned by digest | Writes the genesis block into the execution database, then exits |
+| `geth` | `ethereum/client-go:v1.17.10`, pinned by digest | Execution client |
+| `beacon` | `sigp/lighthouse:v8.3.3`, pinned by digest | Beacon node |
+| `validator` | `sigp/lighthouse:v8.3.3`, pinned by digest | Validator client for all 64 validators |
 
 Genesis and keystores are created by [scripts/devnet/l1-init.sh](../../../scripts/devnet/l1-init.sh)
-with `ethpandaops/ethereum-genesis-generator:6.2.9`, using
+with `ethpandaops/ethereum-genesis-generator:6.2.9`, pinned by digest, using
 [values.env](values.env).
 
 ## Endpoints

@@ -85,7 +85,7 @@ flowchart TB
   node -- "L1 blocks, deposits" --> geth
   vnode == "L1 blocks and blobs: derives every safe block" ==> L1
   proposer -- "super roots" --> vnode
-  proposer == "dispute games, every 60 s" ==> geth
+  proposer == "dispute games of finalized state" ==> geth
 ```
 
 The sequencer builds a block every 2 s and gossips it, signed, to the verifier. The
@@ -98,8 +98,8 @@ batches back from the L1, so a block moves through three states:
 | safe | Derived from a batch on the L1 | The L1; every node derives the same block |
 | finalized | Its batch is in a finalized L1 block | L1 finality, two to three epochs (about 7 to 10 minutes here) |
 
-Once a minute the proposer takes a finalized state from the verifier and posts it to
-the L1 as a dispute game. Withdrawals are proven against those games.
+Whenever the finalized L2 head has moved, at most once a minute, the proposer takes that
+state from the verifier and posts it to the L1 as a dispute game. Withdrawals are proven against those games.
 
 Security boundaries:
 

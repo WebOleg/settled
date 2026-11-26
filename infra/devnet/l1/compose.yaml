@@ -1,13 +1,14 @@
 # Local proof-of-stake L1: one execution client, one beacon node, one validator client.
 # Genesis files and keystores are created by scripts/devnet/l1-init.sh into .devnet/l1.
 # Ports are bound to 127.0.0.1 only. The engine API (8551) is not published at all.
+# Images are pinned by digest.
 name: settled-l1
 
 x-genesis: &genesis ../../../.devnet/l1/genesis:/genesis:ro
 
 services:
   geth-init:
-    image: ethereum/client-go:v1.17.10
+    image: ethereum/client-go:v1.17.10@sha256:5015dcab74ec5c9ef6584ada930ea353264a1c4e72383f256802e3178e10918c
     command:
       - init
       - --datadir=/data
@@ -18,7 +19,7 @@ services:
       - ../../../.devnet/l1/geth:/data
 
   geth:
-    image: ethereum/client-go:v1.17.10
+    image: ethereum/client-go:v1.17.10@sha256:5015dcab74ec5c9ef6584ada930ea353264a1c4e72383f256802e3178e10918c
     depends_on:
       geth-init:
         condition: service_completed_successfully
@@ -55,7 +56,7 @@ services:
       - ../../../.devnet/l1/geth:/data
 
   beacon:
-    image: sigp/lighthouse:v8.3.3
+    image: sigp/lighthouse:v8.3.3@sha256:53f9063d98c3d3a2d290207873f019ea2298cfc02f8cd58d87c33b04aab856d1
     depends_on:
       - geth
     restart: unless-stopped
@@ -86,7 +87,7 @@ services:
       - ../../../.devnet/l1/beacon:/data
 
   validator:
-    image: sigp/lighthouse:v8.3.3
+    image: sigp/lighthouse:v8.3.3@sha256:53f9063d98c3d3a2d290207873f019ea2298cfc02f8cd58d87c33b04aab856d1
     depends_on:
       - beacon
     restart: unless-stopped

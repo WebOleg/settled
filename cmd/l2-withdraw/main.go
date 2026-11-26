@@ -356,7 +356,7 @@ func finalize(ctx context.Context, e *env, wtx portal.WithdrawalTx, amount *big.
 			break
 		}
 		if time.Since(started) > 5*time.Minute {
-			return nil, fmt.Errorf("the portal still refuses finalization after 5 minutes: %w", err)
+			return nil, fmt.Errorf("the portal still refuses finalization after 5 minutes: %s", portal.RevertReason(err))
 		}
 		select {
 		case <-ctx.Done():
@@ -431,7 +431,11 @@ func refuseReplay(ctx context.Context, e *env, wtx portal.WithdrawalTx) error {
 	if err == nil {
 		return errors.New("a second finalization of the same withdrawal would be accepted")
 	}
-	fmt.Printf("replay           a second finalization is refused: %v\n", err)
+	reason := portal.RevertReason(err)
+	if reason != "OptimismPortal_AlreadyFinalized" {
+		return fmt.Errorf("a second finalization is refused, but for %s, not because it is already finalized", reason)
+	}
+	fmt.Printf("replay           a second finalization is refused: %s\n", reason)
 	return nil
 }
 
