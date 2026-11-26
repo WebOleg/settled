@@ -119,6 +119,53 @@ Why not another op-deployer version, as checked on 2026-11-26:
 Moving to op-contracts v10.0.0 is an upgrade of a running chain, which is a stage of the
 roadmap of its own.
 
+`--no-verify` is passed to `apply`: there is no block explorer on the devnet to publish
+contract sources to, and without the flag op-deployer ends a successful deployment with
+error lines about verification.
+
+## L2: deployment check
+
+The intent says who should own what; `make l2-verify` checks what was actually deployed,
+with [cmd/l2-verify](../../cmd/l2-verify). It needs no key.
+
+On the L1, read from the contracts:
+
+| Contract | Getter | Expected |
+|---|---|---|
+| SuperchainProxyAdmin | `owner()` | `superchain-admin` |
+| SuperchainConfig | `guardian()` | `guardian` |
+| Chain ProxyAdmin | `owner()` | `chain-admin` |
+| DisputeGameFactory | `owner()` | `chain-admin` |
+| SystemConfig | `owner()` | `system-config-owner` |
+| SystemConfig | `batcherHash()` | `batcher`, as a bytes32 word |
+| SystemConfig | `unsafeBlockSigner()` | `sequencer` |
+| SystemConfig | `gasLimit()` | 60,000,000 |
+| SystemConfig | `eip1559Denominator()`, `eip1559Elasticity()` | 0, unset |
+| SystemConfig | `daFootprintGasScalar()` | 0, unset |
+| SystemConfig | `minBaseFee()`, `operatorFeeScalar()` | 0 |
+
+It also fails if the deployer address holds any of these roles.
+
+The zeros are by design. The Holocene SystemConfig does not set the EIP-1559 parameters
+at initialisation, and while they are unset the L2 uses the values of its chain config.
+For the DA footprint scalar, Jovian treats 0 as 400. The first run of `l2-verify`
+expected the intent values on SystemConfig and failed on these three; the expectation
+was wrong, not the deployment. op-deployer v0.9.0 does not write the intent's
+`daFootprintGasScalar` to SystemConfig either.
+
+In the exported chain config, where those values live, and where the L2 nodes will look
+for the contracts:
+
+| File | Field | Expected |
+|---|---|---|
+| `genesis.json` | `config.chainId` | 420420 |
+| `genesis.json` | `config.optimism.eip1559Denominator`, `eip1559DenominatorCanyon`, `eip1559Elasticity` | 50, 250, 6 |
+| `rollup.json` | `l2_chain_id`, `l1_chain_id` | 420420, 3151908 |
+| `rollup.json` | `chain_op_config.eip1559Denominator`, `eip1559DenominatorCanyon`, `eip1559Elasticity` | 50, 250, 6 |
+| `rollup.json` | `l1_system_config_address` | the deployed SystemConfigProxy |
+| `rollup.json` | `deposit_contract_address` | the deployed OptimismPortalProxy |
+| `rollup.json` | `genesis.system_config.batcherAddr` | `batcher` |
+
 ## Alternatives rejected
 
 | Option | Why not |

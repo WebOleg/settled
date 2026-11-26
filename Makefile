@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help check check-docs check-shell check-secrets check-go l1-up l1-down l1-reset l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy
+.PHONY: help check check-docs check-shell check-secrets check-go l1-up l1-down l1-reset l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 
@@ -56,3 +56,6 @@ l2-fund: ## Top up the L2 operator accounts that pay gas on the local L1
 
 l2-deploy: ## Deploy the L2 contracts to the local L1 with op-deployer (once)
 	@scripts/devnet/l2-deploy.sh
+
+l2-verify: ## Check the deployed L2 contracts on the L1: owners, operators, parameters
+	@go run ./cmd/l2-verify

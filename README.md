@@ -40,11 +40,14 @@ in [docs/design/devnet.md](docs/design/devnet.md).
 make l2-keys
 make l2-fund
 make l2-deploy
+make l2-verify
 ```
 
 One key per operator role, kept in `.devnet/l2/keys` and readable only by its owner.
 `l2-fund` tops up the accounts that pay gas on the L1. `l2-deploy` deploys the L2
-contracts with op-deployer and exports the L2 genesis and rollup config. The roles, the
+contracts with op-deployer and exports the L2 genesis and rollup config. `l2-verify`
+reads the contracts on the L1 and the exported chain config, and checks every owner,
+operator and parameter against the intent. The roles, the
 key rules and the deployment choices are in
 [docs/design/devnet.md](docs/design/devnet.md#l2-operator-roles-and-keys).
 

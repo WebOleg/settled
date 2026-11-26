@@ -3,6 +3,9 @@
 # digest, then exports genesis.json, rollup.json and the L1 contract addresses into
 # .devnet/l2/deployer. Runs once: a finished deployment is detected and left alone.
 #
+# --no-verify: there is no block explorer on the devnet to publish contract sources to;
+# without it op-deployer logs a successful deployment with error lines.
+#
 # The deployer key reaches the container through the environment only (-e NAME with no
 # value), so it never appears on a command line or in the process list.
 set -euo pipefail
@@ -57,7 +60,7 @@ if ! (
   DEPLOYER_PRIVATE_KEY="0x$(tr -d '[:space:]' < "$keys/deployer.key")"
   export DEPLOYER_PRIVATE_KEY
   run_opd -e DEPLOYER_PRIVATE_KEY -- apply --workdir /work \
-    --l1-rpc-url http://geth:8545 --deployment-target live
+    --l1-rpc-url http://geth:8545 --deployment-target live --no-verify
 ) >"$work/apply.log" 2>&1; then
   echo "l2-deploy: apply failed, last lines:"
   tail -30 "$work/apply.log"
