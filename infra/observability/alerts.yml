@@ -1,6 +1,6 @@
 # Alert rules. Each rule but the last is an overview tile of the chain dashboard: the
 # same query, the same red line, held for a minute so a single slow scrape does not page
-# (the vault's, which read exact state, fire at once; see there).
+# (the vault's and the ledger's, which read exact state, fire at once; see there).
 # make obs-check fails if a rule and its tile differ. A client that stops takes its own
 # metrics with it, and a query over metrics that are gone returns nothing, so no tile
 # turns red; TargetDown covers that. Each rule links its runbook in docs/runbooks.md.
@@ -109,6 +109,46 @@ groups:
         annotations:
           summary: The vault exporter has not read the chain for a minute; the vault alerts above see an old state.
           runbook: docs/runbooks.md#vaultwatchstale
+
+      - alert: DepositIndexerStale
+        expr: time() - max(deposit_indexer_last_step_timestamp_seconds{chain="l2"}) >= 60
+        for: 1m
+        labels:
+          severity: page
+          tile: Deposits are indexed
+        annotations:
+          summary: The deposit indexer has not completed a step for a minute; no deposit is held, credited or voided.
+          runbook: docs/runbooks.md#depositindexerstale
+
+      - alert: DepositIndexerBehind
+        expr: max(deposit_indexer_lag_blocks{chain="l2"}) >= 30
+        for: 1m
+        labels:
+          severity: page
+          tile: Indexer keeps up
+        annotations:
+          summary: The deposit indexer is 30 or more blocks behind the node's head; new deposits are not yet held.
+          runbook: docs/runbooks.md#depositindexerbehind
+
+      - alert: DepositFinalityViolation
+        expr: max(deposit_indexer_finality_violation{chain="l2"}) >= 1
+        for: 0s
+        labels:
+          severity: page
+          tile: Finality holds
+        annotations:
+          summary: A block the indexer held final has left the chain; deposits were credited on a chain that is gone, and the indexer has stopped.
+          runbook: docs/runbooks.md#depositfinalityviolation
+
+      - alert: LedgerOutOfBalance
+        expr: max(ledger_check_problems{chain="l2"}) >= 1
+        for: 0s
+        labels:
+          severity: page
+          tile: Ledger balances
+        annotations:
+          summary: A balance in the ledger differs from the sum of its transfers, or debits differ from credits.
+          runbook: docs/runbooks.md#ledgeroutofbalance
 
       - alert: TargetDown
         expr: up == 0

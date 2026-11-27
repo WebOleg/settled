@@ -704,6 +704,283 @@
     },
     {
       "type": "row",
+      "id": 32,
+      "title": "Overview: are deposits credited?",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "id": 33,
+      "title": "Deposits are indexed",
+      "description": "Green: the deposit indexer completed a step in the last minute. Red: it did not, and no deposit is held, credited or voided. If red, see the runbook DepositIndexerStale.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - max(deposit_indexer_last_step_timestamp_seconds{chain=\"l2\"})",
+          "legendFormat": "Deposits are indexed",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 60
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 34,
+      "title": "Indexer keeps up",
+      "description": "Green: the indexer has read the chain to within 30 blocks (a minute) of the node's head. Red: it is behind, and new deposits are not yet held. If red, see the runbook DepositIndexerBehind.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(deposit_indexer_lag_blocks{chain=\"l2\"})",
+          "legendFormat": "Indexer keeps up",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: blocks",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 35,
+      "title": "Finality holds",
+      "description": "Green: every block the indexer holds final is still in the chain. Red: one is not; deposits were credited on a chain that is gone and the indexer has stopped. If red, see the runbook DepositFinalityViolation.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(deposit_indexer_finality_violation{chain=\"l2\"})",
+          "legendFormat": "Finality holds",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: lost",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 36,
+      "title": "Ledger balances",
+      "description": "Green: every balance in the ledger equals the sum of its transfers, and all debits equal all credits. Red: they do not. If red, see the runbook LedgerOutOfBalance.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(ledger_check_problems{chain=\"l2\"})",
+          "legendFormat": "Ledger balances",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: problems",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "row",
       "id": 11,
       "title": "Details: L2",
       "collapsed": true,
@@ -711,7 +988,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 12
+        "y": 18
       },
       "panels": [
         {
@@ -727,7 +1004,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 13
+            "y": 19
           },
           "targets": [
             {
@@ -779,7 +1056,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 13
+            "y": 19
           },
           "targets": [
             {
@@ -842,7 +1119,7 @@
             "h": 6,
             "w": 12,
             "x": 0,
-            "y": 21
+            "y": 27
           },
           "targets": [
             {
@@ -892,7 +1169,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 13
+        "y": 19
       },
       "panels": [
         {
@@ -908,7 +1185,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 13
+            "y": 19
           },
           "targets": [
             {
@@ -982,7 +1259,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 13
+            "y": 19
           },
           "targets": [
             {
@@ -1043,7 +1320,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 14
+        "y": 20
       },
       "panels": [
         {
@@ -1059,7 +1336,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 13
+            "y": 19
           },
           "targets": [
             {
@@ -1111,7 +1388,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 13
+            "y": 19
           },
           "targets": [
             {
@@ -1171,7 +1448,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 15
+        "y": 21
       },
       "panels": [
         {
@@ -1187,7 +1464,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 13
+            "y": 19
           },
           "targets": [
             {
@@ -1239,7 +1516,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 13
+            "y": 19
           },
           "targets": [
             {
@@ -1300,7 +1577,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 22
       },
       "panels": [
         {
@@ -1316,7 +1593,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 13
+            "y": 19
           },
           "targets": [
             {
@@ -1368,7 +1645,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 13
+            "y": 19
           },
           "targets": [
             {
@@ -1429,7 +1706,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 23
       },
       "panels": [
         {
@@ -1445,7 +1722,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 18
+            "y": 24
           },
           "targets": [
             {
@@ -1508,7 +1785,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 18
+            "y": 24
           },
           "targets": [
             {
@@ -1530,6 +1807,179 @@
               },
               "expr": "vault_queued_wei{chain=\"l2\"} / 1e18",
               "legendFormat": "ETH queued",
+              "range": true,
+              "instant": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "id": 37,
+      "title": "Details: deposits",
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "panels": [
+        {
+          "type": "timeseries",
+          "id": 38,
+          "title": "Deposit indexer: blocks",
+          "description": "The node's head and finalized block, and the highest block the indexer has read. Deposits above finalized are held; at or below it they are credited.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 25
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "deposit_indexer_head_block{chain=\"l2\"}",
+              "legendFormat": "head",
+              "range": true,
+              "instant": false
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "deposit_indexer_finalized_block{chain=\"l2\"}",
+              "legendFormat": "finalized",
+              "range": true,
+              "instant": false
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "deposit_indexer_tip_block{chain=\"l2\"}",
+              "legendFormat": "indexed",
+              "range": true,
+              "instant": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        },
+        {
+          "type": "timeseries",
+          "id": 39,
+          "title": "Deposits",
+          "description": "Deposits held now, and deposits seen, credited and voided per 10 minutes.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 25
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "deposit_indexer_pending_deposits{chain=\"l2\"}",
+              "legendFormat": "held now",
+              "range": true,
+              "instant": false
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "increase(deposit_indexer_deposits_seen_total{chain=\"l2\"}[10m])",
+              "legendFormat": "seen",
+              "range": true,
+              "instant": false
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "increase(deposit_indexer_deposits_posted_total{chain=\"l2\"}[10m])",
+              "legendFormat": "credited",
+              "range": true,
+              "instant": false
+            },
+            {
+              "refId": "D",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "increase(deposit_indexer_deposits_voided_total{chain=\"l2\"}[10m])",
+              "legendFormat": "voided",
               "range": true,
               "instant": false
             }

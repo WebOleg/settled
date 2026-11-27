@@ -101,7 +101,11 @@ On the devnet the indexer and its PostgreSQL run as the bridge service
 ([cmd/bridge-check](../../cmd/bridge-check/main.go)) reconciles the ledger with the
 chain from outside the indexer: it reads the vault's events itself, as a login that
 can only read, and compares them with the books up to the indexer's last final block,
-deposit by deposit and to the wei.
+deposit by deposit and to the wei. `make deposit-check`
+([cmd/deposit-check](../../cmd/deposit-check/main.go)) sends a real deposit and follows
+it: held at once, credited only when the verifier's finalized block reaches it. The
+indexer's tiles, alerts and runbooks are in
+[observability.md](observability.md#alerts).
 
 ## Known limits
 

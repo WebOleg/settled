@@ -63,3 +63,9 @@ scrape_configs:
     static_configs:
       - targets: [vault-exporter:9100]
         labels: {chain: l2, role: vault}
+
+  # The deposit indexer of the bridge service (cmd/deposit-indexer).
+  - job_name: deposit-indexer
+    static_configs:
+      - targets: [deposit-indexer:9110]
+        labels: {chain: l2, role: bridge}

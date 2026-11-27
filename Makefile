@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts check-bridge contracts-snapshot contracts-slither-record l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-upgrade vault-timelock-move vault-check vault-reset bridge-up bridge-check bridge-logs bridge-down bridge-reset l2-logs l2-down l2-reset
+.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts check-bridge contracts-snapshot contracts-slither-record l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-upgrade vault-timelock-move vault-check vault-reset bridge-up bridge-check deposit-check bridge-drill bridge-logs bridge-down bridge-reset l2-logs l2-down l2-reset
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
@@ -186,6 +186,12 @@ bridge-check: ## Reconcile the ledger with the chain, read independently: every 
 	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/contracts/build.sh
 	@go run ./cmd/bridge-check
 
+deposit-check: ## Deposit 0.1 ETH to the vault and follow it: held at once, credited at finality; about 15 minutes
+	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/bridge/deposit-check.sh
+
+bridge-drill: ## Stop the ledger's PostgreSQL, see DepositIndexerStale fire and reach Alertmanager, start it, see it clear
+	@scripts/bridge/bridge-drill.sh
+
 bridge-logs: ## Follow the logs of the deposit indexer and the ledger's PostgreSQL
 	@$(BRIDGE) logs -f --tail 50
 
@@ -196,7 +202,7 @@ bridge-reset: ## Stop the bridge and delete the ledger; its passwords are made a
 	@$(BRIDGE) down --volumes
 	@scripts/bridge/bridge-init.sh --reset
 
-obs-up: ## Start Prometheus, Alertmanager, Grafana and the vault exporter; needs l1-up and l2-up
+obs-up: ## Start Prometheus, Alertmanager, Grafana and the vault exporter; needs l1-up, l2-up and bridge-up
 	@scripts/observability/obs-init.sh
 	@docker run --rm --entrypoint promtool -v "$(CURDIR)/infra/observability:/c:ro" $(PROM_IMAGE) check config /c/prometheus.yml
 	@docker run --rm --entrypoint amtool -v "$(CURDIR)/infra/observability:/c:ro" $(AM_IMAGE) check-config /c/alertmanager.yml
@@ -205,7 +211,7 @@ obs-up: ## Start Prometheus, Alertmanager, Grafana and the vault exporter; needs
 	@# file the old container does not see, so both are recreated to read the current ones.
 	@$(OBS) up -d --quiet-pull --no-deps --force-recreate prometheus alertmanager
 
-obs-check: ## Show that all ten targets are scraped, every panel has data and every alert rule matches its tile
+obs-check: ## Show that all eleven targets are scraped, every panel has data and every alert rule matches its tile
 	@scripts/observability/obs-check.sh
 
 alert-drill: ## Stop the batcher, see its alerts fire and reach Alertmanager, start it, see them clear

@@ -176,6 +176,72 @@ Do:
 - The verifier is down: `make l2-up`.
 - The exporter is down: `make obs-up` starts it.
 
+## DepositIndexerStale
+
+The deposit indexer has not completed a step for a minute. No new deposit is held,
+none is credited at finality and none voided: customers wait, and a reorganisation is
+not undone until it runs again.
+
+Look at:
+- `make bridge-logs`: the indexer logs each new error once, with what it was doing.
+- `make status`: are the verifier's op-reth and the bridge's PostgreSQL running.
+
+Do:
+- The verifier is down: `make l2-up`.
+- PostgreSQL or the indexer is down: `make bridge-up`. The indexer goes on from the
+  last block it stored; nothing is counted twice.
+
+A stopped indexer takes its metrics with it, and this alert with them: TargetDown
+fires for it instead. `make bridge-drill` shows this alert for a database that is down.
+
+## DepositIndexerBehind
+
+The indexer is 30 or more blocks, a minute, behind the node's head. Deposits made in
+that time are not yet held, so customers do not see them.
+
+Look at:
+- Dashboard, Details: deposits: is the indexed line moving toward the head, or flat.
+- `make bridge-logs`: errors from the node or the database.
+
+Do:
+- Moving: it is catching up, after a restart or a long stop; it reads 300 blocks a step.
+- Flat: as for DepositIndexerStale.
+
+## DepositFinalityViolation
+
+The node's chain no longer has a block the indexer held final. Deposits were credited
+on a chain that is gone, and customers may have spent them. The indexer has stopped
+writing and will not start again by itself.
+
+Look at:
+- `make bridge-logs`: the block, the hash the indexer stored and the hash the node has.
+- `make status` and the verifier: is it on the same chain as the sequencer, and is its
+  finalized head the one the L1 holds. A verifier rebuilt from scratch, or pointed at
+  another L1, reports another chain.
+
+Do:
+- Stop crediting: the guardian pauses the vault, so nothing is paid on these balances.
+- Find which credited deposits are not on the node's chain: compare `deposits` (status
+  `posted`) with the chain, or run `make bridge-check`, which names the first.
+- Correct the ledger with new transfers, never by editing it; then restart the indexer
+  (`make bridge-down`, `make bridge-up`) only once the node is right.
+
+## LedgerOutOfBalance
+
+A balance in the ledger differs from the sum of its transfers, or all debits differ
+from all credits. The ledger's functions make this impossible; if it fires, something
+wrote to the tables around them.
+
+Look at:
+- `make bridge-logs`: the indexer logs each difference `ledger_check()` reports.
+- Who can write: only the schema owner can change `accounts` by hand; the services'
+  logins hold only their roles.
+
+Do:
+- Stop paying from the ledger until it is understood.
+- Recompute from the journal, which nobody can change: `ledger_check()` names each
+  account and its totals. Correct with transfers, never by editing balances.
+
 ## TargetDown
 
 A client of the devnet has not answered Prometheus for a minute. Its own metrics are

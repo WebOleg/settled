@@ -1,8 +1,8 @@
 # Observability for the devnet. Prometheus scrapes every client of the L1 and the L2
-# over their Docker networks, and the vault exporter, and evaluates the alert rules;
-# Alertmanager receives the alerts; Grafana shows the dashboards in this repository. The
-# metrics ports are not published; Prometheus, Alertmanager and Grafana are, on
-# 127.0.0.1 only. Images are pinned by digest, the exporter's base images too.
+# over their Docker networks, the vault exporter and the bridge's deposit indexer, and
+# evaluates the alert rules; Alertmanager receives the alerts; Grafana shows the
+# dashboards in this repository. The metrics ports are not published; Prometheus,
+# Alertmanager and Grafana are, on 127.0.0.1 only. Images are pinned by digest, the exporter's base images too.
 name: settled-obs
 
 networks:
@@ -12,6 +12,9 @@ networks:
     external: true
   l2:
     name: settled-l2_default
+    external: true
+  bridge:
+    name: settled-bridge_default
     external: true
 
 volumes:
@@ -27,6 +30,7 @@ services:
       - default
       - l1
       - l2
+      - bridge
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
