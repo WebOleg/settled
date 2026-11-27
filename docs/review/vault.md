@@ -70,3 +70,41 @@ pinned and audited, which this repository does not change.
 | `naming-convention` | Informational | 15 | OpenZeppelin initializers, `IERC6372.CLOCK_MODE` | Names fixed by the library and by the standard. |
 | `unindexed-event-address` | Informational | 3 | `Paused`, `Unpaused`, `AdminChanged` | Events fixed by the library and by ERC-1967. |
 | `too-many-digits` | Informational | 1 | `Math.log2` | A bit mask written out in full. |
+
+## Manual review
+
+Each area read against the code, with what shows it holds. Unit tests are in
+[test/unit](../../contracts/test/unit), fuzz tests in
+[VaultFuzz.t.sol](../../contracts/test/fuzz/VaultFuzz.t.sol), invariant tests in
+[test/invariant](../../contracts/test/invariant), the Halmos proofs in
+[VaultSymbolic.t.sol](../../contracts/test/symbolic/VaultSymbolic.t.sol); `make
+vault-check` runs on the devnet.
+
+| Area | What was checked | Shown by | Result |
+|---|---|---|---|
+| Reentrancy | Every function that moves value has `nonReentrant` first; state and events come before any external call; a deposit pulls the token last | `test_deposit_reentryIsBlocked`, `test_withdraw_reentryIsBlocked` (the guard's own `ReentrantCall`), forge lint | Holds |
+| One payment per id | Any earlier use of an id, paid, queued or cancelled, rules it out | `test_withdraw_paysOnce`, `testFuzz_I3_I5_paidOrQueuedOnce`, `invariant_I3_paidOnce`, `check_I3_paidIdNeverPaysAgain`, `vault-check` | Holds |
+| Solvency | No payment beyond what deposits account for; a queued payment checks again when paid | `testFuzz_I1_I2_neverPaysBeyondAccounted`, `invariant_I1_solvency`, `invariant_I2_accounting`, `check_I1_I2_neverBeyondAccounted`, `vault-check` to the wei | Holds |
+| Rate limit | Payments at once over any span stay within capacity plus the refill; the queue does not draw on it; a new configuration does not refill it | `testFuzz_I4_rateLimitBound`, `invariant_I4_rateLimit`, `check_I4_paysWithinAvailable`, `test_setTokenConfig_doesNotRefillAndNewTokenStartsEmpty`, `vault-check` | Holds; finding F5 |
+| Queue | Not paid before its release block, never after a cancel; cancelling still works while paused | `test_executeQueued_onlyAfterRelease`, `test_cancelQueued_byGuardianIsFinal`, `test_pause_stopsDepositsAndPayments`, `invariant_I5_queue`, `vault-check` | Holds; finding F2 |
+| Roles | Operator pays, guardian pauses and cancels, the admin does the rest; no key holds two of them; the admin changes in two steps with a delay | `test_withdraw_onlyOperator`, `test_adminFunctions_onlyAdmin`, `test_roles_oneKeyOneRole`, `test_adminTransfer_twoStepsWithDelay`, `invariant_I7_roles`, `check_I7_onlyOperatorPays`, `vault-verify` | Holds; findings F1, F3 |
+| Pause | Stops deposits and payments; only the admin, through the timelock, unpauses | `test_pause_guardianPausesOnlyAdminUnpauses`, `invariant_I6_pause`, `vault-check` | Holds; finding F3 |
+| Initialization | The proxy is initialized in its own creation, so no one can do it first; the implementation refuses | `test_implementation_cannotBeInitialized`, `test_initialize_cannotRunTwice`, `vault-verify` | Holds |
+| Upgrades | Only the admin can upgrade; state stays in the proxy; every field is where the test pins it, inside its namespace; an upgrade is refused before it is proposed if the new code would move a field | `test_upgrade_byAdminKeepsState`, `test_I10_layout`, `test_I10_namespaceIsErc7201`, `test_I10_nothingOutsideNamespaces`, the tests of `internal/storagelayout`, devnet upgrades with `vault-verify` | Holds; finding F6, fixed |
+| Tokens | No return value handled; a fee on transfer refused in and out; only allowed tokens | `test_deposit_tokenWithoutReturnValue`, `test_deposit_rejectsFeeOnTransfer`, `test_deposit_rejectsBadInput` | Holds; finding F4 |
+| ETH | No ETH without an account; a recipient that refuses leaves the id unused; no return data copied | `test_receive_rejectsPlainEther`, `test_withdraw_nativeToRejectingContractLeavesIdUnused` | Holds |
+| Paying the vault itself | ETH to the vault is refused by its own `receive`; a token sent to itself leaves nothing, which the exact-amount check refuses | `test_withdraw_toTheVaultItselfIsRefused` | Holds |
+| Funds not owed | Skim takes only what is held beyond what is owed, ETH forced in included | `test_skim_takesOnlyWhatIsNotOwed`, `test_skim_nativeForcedIn`, `testFuzz_I9_skimLeavesAccounted`, `invariant_I9_skim` | Holds |
+| Front-running | Ids come from the ledger and only the operator can use them; deposits carry their account; admin changes are public in the timelock on purpose | Reading the code | Nothing to front-run |
+| Time | The clock is the block number; delays and refills count blocks | `test_clock_isTheBlockNumber`, `vault-verify` (block time fixed by derivation) | Holds |
+
+### Findings
+
+| Id | Finding | Severity | Status |
+|---|---|---|---|
+| F1 | One key is the timelock's proposer, executor and canceller. Whoever steals it can propose any change, an upgrade included, and only that same key can cancel it: the delay gives time to see the change, but no one to stop it. | High | Open. |
+| F2 | Nothing watches the queue: the guardian has the queue delay to cancel a large withdrawal it does not expect, but no alert tells it one was queued. | Medium | Open. |
+| F3 | A stolen guardian key can pause again after every unpause and cancel every queued withdrawal. It cannot move funds. | Low | By design: the admin revokes the role through the timelock, so the damage lasts one timelock delay. |
+| F4 | A token whose balance changes by itself breaks the books: a negative rebase leaves the vault owing more than it holds, and a fee switched on later makes its payments revert. | Medium if such a token is allowed | A rule for the admin: allow only plain ERC-20 tokens. Only ETH is allowed on the devnet. |
+| F5 | The refill rounds down at each payment, losing less than one wei of allowance each time. | Informational | Accepted: the error only ever makes the limit stricter. |
+| F6 | `vault-upgrade` checked the new code but not that its storage layout matched the deployed one. | Low | Fixed. The deployment record keeps the storage layout of the code the vault runs; `vault-upgrade` refuses, before it proposes anything, an implementation that moves, renames or retypes a recorded variable or puts a new one over its bytes ([internal/storagelayout](../../internal/storagelayout/storagelayout.go)); `vault-verify` checks the record against the build. |

@@ -32,6 +32,7 @@ import (
 	"github.com/WebOleg/settled/internal/devkeys"
 	"github.com/WebOleg/settled/internal/funding"
 	"github.com/WebOleg/settled/internal/rolekeys"
+	"github.com/WebOleg/settled/internal/storagelayout"
 	"github.com/WebOleg/settled/internal/timelockop"
 	"github.com/WebOleg/settled/internal/txsend"
 	"github.com/WebOleg/settled/internal/vaultconf"
@@ -99,6 +100,10 @@ func run(ctx context.Context, rpcURL, outDir string) error {
 	vault, err := artifact.Load(outDir, "Vault.sol", "Vault")
 	if err != nil {
 		return err
+	}
+	layout, err := storagelayout.Parse(vault.StorageLayout)
+	if err != nil {
+		return fmt.Errorf("the vault's storage layout (foundry.toml extra_output): %w", err)
 	}
 	proxy, err := artifact.Load(outDir, "ERC1967Proxy.sol", "ERC1967Proxy")
 	if err != nil {
@@ -173,6 +178,7 @@ func run(ctx context.Context, rpcURL, outDir string) error {
 	deployment := &vaultconf.Deployment{
 		ChainID: chainID.Uint64(), L2Genesis: genesis.Hash(), Timelock: timelockAddr,
 		Implementation: implementation, Vault: vaultAddr, Block: receipt.BlockNumber.Uint64(),
+		StorageLayout: layout,
 	}
 	if err := vaultconf.WriteDeployment(".", deployment); err != nil {
 		return err

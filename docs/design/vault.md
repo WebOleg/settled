@@ -149,6 +149,14 @@ and after its delay the timelock executes it. The state stays in the proxy, and
 `make vault-verify` checks code, roles and configuration again. When the vault already
 runs the code of the build, it does nothing.
 
+The deployment record keeps the storage layout of the implementation the vault runs,
+from solc's own output. Before it proposes anything, `make vault-upgrade` checks the new
+layout against it ([internal/storagelayout](../../internal/storagelayout/storagelayout.go)):
+every recorded variable must keep its slot, offset, name and type, a struct's members
+included, and a new variable may only use free space. Types are compared by what they
+are, not by the AST ids in their names. `make vault-verify` checks that the record holds
+the layout of the build the vault runs.
+
 An upgrade keeps the meaning of the state. The move of the clock from timestamps to
 block numbers did not: every stored release time and refill point would have been read
 as a block number. It was a new deployment, not an upgrade.
@@ -210,7 +218,7 @@ and 128 invariant runs of 64 calls; CI runs 10,000 and 512 of 128.
 | Concern | How it is handled |
 |---|---|
 | Reentrancy | Every function that moves value is guarded (`nonReentrant`, the first modifier, on a `transient` variable the compiler keeps in transient storage: no storage slot, cleared after every transaction), and changes state and emits its event before any external call. A token deposit pulls the token last and reverts unless exactly the amount arrived. |
-| Time | The vault's clock (ERC-6372, `clock()` and `CLOCK_MODE`) is the L2 block number: whoever produces a block chooses its timestamp within the chain's rules, but not its number. Delays and refills are counted in blocks; they are durations because the OP Stack makes a block every 2 s, fixed by derivation, which `make vault-verify` checks against the rollup config. The timelock and the admin handover are OpenZeppelin's and count seconds. If the sequencer stops, it catches up afterwards by making the missed blocks at once, so a queued withdrawal can be due the moment blocks resume, with no time for the guardian in between; an alert on `WithdrawalQueued` and the guardian's pause cover it. |
+| Time | The vault's clock (ERC-6372, `clock()` and `CLOCK_MODE`) is the L2 block number: whoever produces a block chooses its timestamp within the chain's rules, but not its number. Delays and refills are counted in blocks; they are durations because the OP Stack makes a block every 2 s, fixed by derivation, which `make vault-verify` checks against the rollup config. The timelock and the admin handover are OpenZeppelin's and count seconds. If the sequencer stops, it catches up afterwards by making the missed blocks at once, so a queued withdrawal can be due the moment blocks resume, with no time for the guardian in between. The guardian can pause; nothing yet alerts on `WithdrawalQueued` (finding F2 of the review). |
 | Narrowing | Every conversion to a smaller integer goes through `SafeCast` and reverts rather than truncates. |
 | Tokens that misbehave | `SafeERC20` for tokens that return no value; the received amount is measured, and a difference reverts. Only allowed tokens are accepted. |
 | ETH to a contract that reverts | The payment reverts with `NativeTransferFailed` and the id stays unused, so the ledger can retry or send it elsewhere. |

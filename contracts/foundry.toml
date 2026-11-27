@@ -17,6 +17,9 @@ optimizer_runs = 10000
 # a deployed contract can be compared with a local build.
 bytecode_hash = "none"
 cbor_metadata = false
+# The storage layout goes into each artifact: vault-upgrade checks the new implementation's
+# against the one recorded for the code the vault runs.
+extra_output = ["storageLayout"]
 # Every compiler warning counts as a failure in make check-contracts, the libraries'
 # included. Forge hides some by default (code size, transient storage, licence); the
 # empty list turns that off, so nothing is hidden.

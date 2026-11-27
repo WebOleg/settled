@@ -5,10 +5,17 @@
 // stays where it is, in the proxy; vault-verify then checks the code, the roles and the
 // configuration again. If the vault already runs the code the repository builds, it does
 // nothing.
+//
+// Before anything is proposed, the storage layout of the new implementation is checked
+// against the layout recorded for the one the vault runs: every variable must stay where
+// it is, with its name and type, and nothing new may share its bytes. A record without a
+// layout gets one only when the vault runs exactly the code the repository builds, so the
+// layout recorded is the layout of the code deployed.
 package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"math/big"
@@ -22,6 +29,7 @@ import (
 	"github.com/WebOleg/settled/internal/artifact"
 	"github.com/WebOleg/settled/internal/bytecode"
 	"github.com/WebOleg/settled/internal/rolekeys"
+	"github.com/WebOleg/settled/internal/storagelayout"
 	"github.com/WebOleg/settled/internal/timelockop"
 	"github.com/WebOleg/settled/internal/txsend"
 	"github.com/WebOleg/settled/internal/vaultconf"
@@ -80,11 +88,29 @@ func run(ctx context.Context, rpcURL, outDir string) error {
 	if err != nil {
 		return fmt.Errorf("read the implementation's code: %w", err)
 	}
+	layout, err := storagelayout.Parse(vault.StorageLayout)
+	if err != nil {
+		return fmt.Errorf("the build's storage layout (foundry.toml extra_output): %w", err)
+	}
 	if _, err := bytecode.Compare(vault.Runtime, code, vault.Immutables); err == nil {
+		if d.StorageLayout == nil {
+			d.StorageLayout = layout
+			if err := vaultconf.WriteDeployment(".", d); err != nil {
+				return err
+			}
+			fmt.Printf("layout recorded  %d variables, from the build the vault runs\n", len(layout))
+		}
 		fmt.Printf("up to date       the vault at %s runs the code the repository builds (%s); nothing to do\n", d.Vault, current)
 		return nil
 	}
 	fmt.Printf("current          %s differs from the build\n", current)
+	if d.StorageLayout == nil {
+		return errors.New("no storage layout is recorded for the code the vault runs, so the upgrade cannot be checked; record it from a build of that code first")
+	}
+	if err := storagelayout.Compatible(d.StorageLayout, layout); err != nil {
+		return fmt.Errorf("the new implementation would move the vault's state:\n%w", err)
+	}
+	fmt.Printf("storage layout   compatible: the %d recorded variables keep slot, offset, name and type\n", len(d.StorageLayout))
 
 	deployer, err := rolekeys.Load(vaultconf.KeysDir, vaultconf.Deployer)
 	if err != nil {
@@ -123,6 +149,7 @@ func run(ctx context.Context, rpcURL, outDir string) error {
 		return fmt.Errorf("after the upgrade the vault points at %s, want %s", now, next)
 	}
 	d.Implementation = next
+	d.StorageLayout = layout
 	if err := vaultconf.WriteDeployment(".", d); err != nil {
 		return err
 	}

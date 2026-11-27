@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/WebOleg/settled/internal/rolekeys"
+	"github.com/WebOleg/settled/internal/storagelayout"
 )
 
 // Dir is where the deployment lives, KeysDir its keys, one file per role.
@@ -112,6 +113,9 @@ type Deployment struct {
 	Implementation common.Address `json:"implementation"`
 	Vault          common.Address `json:"vault"`
 	Block          uint64         `json:"block"`
+	// StorageLayout is the storage layout of the implementation the vault runs, kept so
+	// that an upgrade can be checked against it before it is proposed.
+	StorageLayout []storagelayout.Entry `json:"storageLayout,omitempty"`
 }
 
 // ReadDeployment reads Dir/deployment.json from root. It wraps fs.ErrNotExist when there

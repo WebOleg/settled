@@ -6,9 +6,12 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+
+	"github.com/WebOleg/settled/internal/storagelayout"
 )
 
 func TestNativeConfigIsValid(t *testing.T) {
@@ -62,7 +65,10 @@ func TestDeploymentRoundTrip(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, Dir), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	d := &Deployment{ChainID: 420420, Vault: common.HexToAddress("0x01"), Block: 7}
+	d := &Deployment{
+		ChainID: 420420, Vault: common.HexToAddress("0x01"), Block: 7,
+		StorageLayout: []storagelayout.Entry{{Label: "_n", Slot: "5", Offset: 0, Bytes: 32, Type: "uint256:32"}},
+	}
 	if err := WriteDeployment(root, d); err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +76,7 @@ func TestDeploymentRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if *got != *d {
+	if !reflect.DeepEqual(got, d) {
 		t.Fatalf("got %+v, want %+v", got, d)
 	}
 }

@@ -6,6 +6,8 @@
 //     immutable is its own address;
 //   - the proxy points at that implementation, and the implementation cannot be
 //     initialized directly;
+//   - the deployment record holds the storage layout of that build, against which the
+//     next upgrade is checked;
 //   - the roles: the timelock is the vault's admin, with nothing pending; the operator
 //     and the guardian hold their roles and nothing else; the deployer and the timelock
 //     proposer hold no role on the vault; the timelock administers itself;
@@ -25,6 +27,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -37,6 +40,7 @@ import (
 	"github.com/WebOleg/settled/internal/bytecode"
 	"github.com/WebOleg/settled/internal/chaincall"
 	"github.com/WebOleg/settled/internal/rolekeys"
+	"github.com/WebOleg/settled/internal/storagelayout"
 	"github.com/WebOleg/settled/internal/vaultconf"
 )
 
@@ -124,6 +128,8 @@ func run(ctx context.Context, rpcURL, outDir string) (int, int, error) {
 	}
 	v.report("proxy implementation slot (ERC-1967)", err, d.Implementation.Hex())
 	v.report("implementation refuses initialize", v.initializeRefused(outDir, d.Implementation, roles), "InvalidInitialization")
+	n, err := recordedLayout(outDir, d)
+	v.report("recorded storage layout is the build's", err, fmt.Sprintf("%d variables", n))
 
 	// Roles on the vault.
 	v.address("vault admin is the timelock", d.Vault, "defaultAdmin()", d.Timelock)
@@ -165,11 +171,32 @@ func run(ctx context.Context, rpcURL, outDir string) (int, int, error) {
 	// Parameters.
 	v.number("withdrawal queue delay, in blocks", d.Vault, "withdrawalDelay()", vaultconf.WithdrawalDelay)
 	v.report("vault clock mode is the block number", v.clockMode(outDir, d.Vault), vaultconf.ClockMode)
-	n, err := v.clock(outDir, d.Vault)
+	n, err = v.clock(outDir, d.Vault)
 	v.report("vault clock reads the L2 block number", err, fmt.Sprintf("block %d", n))
 	v.number("not paused", d.Vault, "paused()", 0)
 	v.tokenConfig(d.Vault)
 	return v.failed, v.total, nil
+}
+
+// recordedLayout checks that the record holds the storage layout of the build, which
+// the implementation was checked above to run: it is what the next upgrade is checked
+// against.
+func recordedLayout(outDir string, d *vaultconf.Deployment) (uint64, error) {
+	a, err := artifact.Load(outDir, "Vault.sol", "Vault")
+	if err != nil {
+		return 0, err
+	}
+	layout, err := storagelayout.Parse(a.StorageLayout)
+	if err != nil {
+		return 0, err
+	}
+	if d.StorageLayout == nil {
+		return 0, errors.New("none recorded; make vault-upgrade records it while the vault runs the build")
+	}
+	if !slices.Equal(d.StorageLayout, layout) {
+		return 0, errors.New("the recorded layout is not the build's")
+	}
+	return uint64(len(layout)), nil
 }
 
 // fixedBlockTime checks what the vault's clock relies on for its delays to be durations:

@@ -57,7 +57,7 @@ the host.
 | [foundry.toml](foundry.toml) | Compiler, EVM target, library paths |
 | [src/interfaces/IVault.sol](src/interfaces/IVault.sol) | The vault's interface: types, events, errors, functions |
 | [src/Vault.sol](src/Vault.sol) | `VaultCore`, the vault's code, built on OpenZeppelin: default admin rules, pause, UUPS, SafeERC20, its own reentrancy guard on a `transient` variable; and `Vault`, that code with its state in its ERC-7201 namespace |
-| [test/unit](test/unit) | A test for each rule of the specification, the bad case included, one contract per topic: deposits, withdrawals, queue and pause, administration, upgrades |
+| [test/unit](test/unit) | A test for each rule of the specification, the bad case included, one contract per topic: deposits, withdrawals, reentrancy, queue and pause, administration, upgrades |
 | [test/unit/VaultLayout.t.sol](test/unit/VaultLayout.t.sol) | I10: where each field of the state lives, read slot by slot from the proxy |
 | [test/fuzz/VaultFuzz.t.sol](test/fuzz/VaultFuzz.t.sol) | The rules over random amounts, ids and times; the rate limit checked over every span |
 | [test/invariant](test/invariant) | I1 to I9 over random sequences of every call by every key; the handler keeps its own books |

@@ -1,0 +1,226 @@
+{
+  "storage": [
+    {
+      "astId": 51895,
+      "contract": "src/Vault.sol:Vault",
+      "label": "_tokens",
+      "offset": 0,
+      "slot": "41050540654752276600252232367183883222137989192014518778542525053381325975040",
+      "type": "t_mapping(t_address,t_struct(TokenConfig)53121_storage)"
+    },
+    {
+      "astId": 51900,
+      "contract": "src/Vault.sol:Vault",
+      "label": "_buckets",
+      "offset": 0,
+      "slot": "41050540654752276600252232367183883222137989192014518778542525053381325975041",
+      "type": "t_mapping(t_address,t_struct(Bucket)51890_storage)"
+    },
+    {
+      "astId": 51904,
+      "contract": "src/Vault.sol:Vault",
+      "label": "_accounted",
+      "offset": 0,
+      "slot": "41050540654752276600252232367183883222137989192014518778542525053381325975042",
+      "type": "t_mapping(t_address,t_uint256)"
+    },
+    {
+      "astId": 51909,
+      "contract": "src/Vault.sol:Vault",
+      "label": "_withdrawals",
+      "offset": 0,
+      "slot": "41050540654752276600252232367183883222137989192014518778542525053381325975043",
+      "type": "t_mapping(t_bytes32,t_struct(Withdrawal)53134_storage)"
+    },
+    {
+      "astId": 51911,
+      "contract": "src/Vault.sol:Vault",
+      "label": "_depositCount",
+      "offset": 0,
+      "slot": "41050540654752276600252232367183883222137989192014518778542525053381325975044",
+      "type": "t_uint256"
+    },
+    {
+      "astId": 51913,
+      "contract": "src/Vault.sol:Vault",
+      "label": "_withdrawalDelay",
+      "offset": 0,
+      "slot": "41050540654752276600252232367183883222137989192014518778542525053381325975045",
+      "type": "t_uint64"
+    }
+  ],
+  "types": {
+    "t_address": {
+      "encoding": "inplace",
+      "label": "address",
+      "numberOfBytes": "20"
+    },
+    "t_bool": {
+      "encoding": "inplace",
+      "label": "bool",
+      "numberOfBytes": "1"
+    },
+    "t_bytes32": {
+      "encoding": "inplace",
+      "label": "bytes32",
+      "numberOfBytes": "32"
+    },
+    "t_enum(WithdrawalStatus)53111": {
+      "encoding": "inplace",
+      "label": "enum IVault.WithdrawalStatus",
+      "numberOfBytes": "1"
+    },
+    "t_mapping(t_address,t_struct(Bucket)51890_storage)": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => struct VaultCore.Bucket)",
+      "numberOfBytes": "32",
+      "value": "t_struct(Bucket)51890_storage"
+    },
+    "t_mapping(t_address,t_struct(TokenConfig)53121_storage)": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => struct IVault.TokenConfig)",
+      "numberOfBytes": "32",
+      "value": "t_struct(TokenConfig)53121_storage"
+    },
+    "t_mapping(t_address,t_uint256)": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => uint256)",
+      "numberOfBytes": "32",
+      "value": "t_uint256"
+    },
+    "t_mapping(t_bytes32,t_struct(Withdrawal)53134_storage)": {
+      "encoding": "mapping",
+      "key": "t_bytes32",
+      "label": "mapping(bytes32 => struct IVault.Withdrawal)",
+      "numberOfBytes": "32",
+      "value": "t_struct(Withdrawal)53134_storage"
+    },
+    "t_struct(Bucket)51890_storage": {
+      "encoding": "inplace",
+      "label": "struct VaultCore.Bucket",
+      "numberOfBytes": "32",
+      "members": [
+        {
+          "astId": 51887,
+          "contract": "src/Vault.sol:Vault",
+          "label": "level",
+          "offset": 0,
+          "slot": "0",
+          "type": "t_uint128"
+        },
+        {
+          "astId": 51889,
+          "contract": "src/Vault.sol:Vault",
+          "label": "updatedAt",
+          "offset": 16,
+          "slot": "0",
+          "type": "t_uint64"
+        }
+      ]
+    },
+    "t_struct(TokenConfig)53121_storage": {
+      "encoding": "inplace",
+      "label": "struct IVault.TokenConfig",
+      "numberOfBytes": "64",
+      "members": [
+        {
+          "astId": 53114,
+          "contract": "src/Vault.sol:Vault",
+          "label": "allowed",
+          "offset": 0,
+          "slot": "0",
+          "type": "t_bool"
+        },
+        {
+          "astId": 53116,
+          "contract": "src/Vault.sol:Vault",
+          "label": "capacity",
+          "offset": 1,
+          "slot": "0",
+          "type": "t_uint128"
+        },
+        {
+          "astId": 53118,
+          "contract": "src/Vault.sol:Vault",
+          "label": "refillPeriod",
+          "offset": 17,
+          "slot": "0",
+          "type": "t_uint64"
+        },
+        {
+          "astId": 53120,
+          "contract": "src/Vault.sol:Vault",
+          "label": "largeThreshold",
+          "offset": 0,
+          "slot": "1",
+          "type": "t_uint128"
+        }
+      ]
+    },
+    "t_struct(Withdrawal)53134_storage": {
+      "encoding": "inplace",
+      "label": "struct IVault.Withdrawal",
+      "numberOfBytes": "96",
+      "members": [
+        {
+          "astId": 53125,
+          "contract": "src/Vault.sol:Vault",
+          "label": "status",
+          "offset": 0,
+          "slot": "0",
+          "type": "t_enum(WithdrawalStatus)53111"
+        },
+        {
+          "astId": 53127,
+          "contract": "src/Vault.sol:Vault",
+          "label": "releaseAt",
+          "offset": 1,
+          "slot": "0",
+          "type": "t_uint64"
+        },
+        {
+          "astId": 53129,
+          "contract": "src/Vault.sol:Vault",
+          "label": "token",
+          "offset": 9,
+          "slot": "0",
+          "type": "t_address"
+        },
+        {
+          "astId": 53131,
+          "contract": "src/Vault.sol:Vault",
+          "label": "to",
+          "offset": 0,
+          "slot": "1",
+          "type": "t_address"
+        },
+        {
+          "astId": 53133,
+          "contract": "src/Vault.sol:Vault",
+          "label": "amount",
+          "offset": 0,
+          "slot": "2",
+          "type": "t_uint256"
+        }
+      ]
+    },
+    "t_uint128": {
+      "encoding": "inplace",
+      "label": "uint128",
+      "numberOfBytes": "16"
+    },
+    "t_uint256": {
+      "encoding": "inplace",
+      "label": "uint256",
+      "numberOfBytes": "32"
+    },
+    "t_uint64": {
+      "encoding": "inplace",
+      "label": "uint64",
+      "numberOfBytes": "8"
+    }
+  }
+}

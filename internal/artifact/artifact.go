@@ -1,5 +1,6 @@
 // Package artifact reads the build output forge writes for a contract: its ABI, its
-// creation code, its runtime code and where the runtime code holds immutables. Commands
+// creation code, its runtime code, where the runtime code holds immutables, and its
+// storage layout. Commands
 // that deploy or verify contracts take the code from here, so what goes on chain and
 // what is checked against it is what the repository builds.
 package artifact
@@ -26,6 +27,9 @@ type Artifact struct {
 	Creation   []byte
 	Runtime    []byte
 	Immutables []bytecode.Range
+	// StorageLayout is solc's storageLayout output, raw; empty when the build did not
+	// ask for it (foundry.toml extra_output).
+	StorageLayout json.RawMessage
 }
 
 type file struct {
@@ -38,6 +42,7 @@ type file struct {
 		Object              string                      `json:"object"`
 		ImmutableReferences map[string][]bytecode.Range `json:"immutableReferences"`
 	} `json:"deployedBytecode"`
+	StorageLayout json.RawMessage `json:"storageLayout"`
 }
 
 // Load reads out/<source>/<name>.json, for example Load("contracts/out", "Vault.sol",
@@ -73,7 +78,7 @@ func Load(outDir, source, name string) (*Artifact, error) {
 		immutables = append(immutables, ranges...)
 	}
 	sort.Slice(immutables, func(i, j int) bool { return immutables[i].Start < immutables[j].Start })
-	return &Artifact{Name: name, ABI: parsed, Creation: creation, Runtime: runtime, Immutables: immutables}, nil
+	return &Artifact{Name: name, ABI: parsed, Creation: creation, Runtime: runtime, Immutables: immutables, StorageLayout: f.StorageLayout}, nil
 }
 
 // DeployData is the creation code followed by the ABI-encoded constructor arguments.

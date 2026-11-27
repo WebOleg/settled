@@ -2,12 +2,11 @@
 pragma solidity 0.8.39;
 
 import {IVault} from "../../src/interfaces/IVault.sol";
-import {ReenteringToken} from "../mocks/ReenteringToken.sol";
 import {RejectEther} from "../mocks/RejectEther.sol";
 import {VaultUnitBase} from "../utils/VaultUnitBase.sol";
 
-/// @notice Unit tests of withdrawals paid at once (I1 to I4) and of the reentrancy
-/// guard. One test per rule of docs/design/vault.md, the bad case included.
+/// @notice Unit tests of withdrawals paid at once (I1 to I4). One test per rule of
+/// docs/design/vault.md, the bad case included.
 contract VaultWithdrawTest is VaultUnitBase {
     // Withdrawals at once (I1, I2, I3, I4)
 
@@ -78,6 +77,21 @@ contract VaultWithdrawTest is VaultUnitBase {
         assertEq(vault.available(native), CAPACITY);
     }
 
+    function test_withdraw_toTheVaultItselfIsRefused() public {
+        depositNative(1 ether);
+        depositToken(1 ether);
+        // ETH to the vault: its receive() refuses it, so the payment fails.
+        vm.prank(operator);
+        vm.expectRevert(abi.encodeWithSelector(IVault.NativeTransferFailed.selector, address(vault), 1 ether));
+        vault.withdraw("self-eth", native, address(vault), 1 ether);
+        // A token to the vault: nothing leaves it, which the exact-amount check refuses.
+        vm.prank(operator);
+        vm.expectRevert(abi.encodeWithSelector(IVault.TransferAmountMismatch.selector, address(token), 1 ether, 0));
+        vault.withdraw("self-token", address(token), address(vault), 1 ether);
+        assertEq(vault.accounted(native), 1 ether);
+        assertEq(vault.accounted(address(token)), 1 ether);
+    }
+
     function test_withdraw_nativeToRejectingContractLeavesIdUnused() public {
         depositNative(1 ether);
         address rejecting = address(new RejectEther());
@@ -88,58 +102,5 @@ contract VaultWithdrawTest is VaultUnitBase {
         assertEq(uint8(vault.withdrawal("w1").status), uint8(IVault.WithdrawalStatus.None));
         assertEq(vault.accounted(native), 1 ether);
         withdraw("w1", native, 1 ether);
-    }
-
-    function test_deposit_reentryIsBlocked() public {
-        ReenteringToken re = new ReenteringToken();
-        vm.prank(admin);
-        vault.setTokenConfig(address(re), tokenConfig());
-        re.mint(user, 10 ether);
-        vm.prank(user);
-        re.approve(address(vault), 10 ether);
-
-        // While the vault pulls the token, the token calls deposit again; the guard is the
-        // first modifier, so it refuses before any other check.
-        re.arm(address(vault), abi.encodeCall(IVault.deposit, (address(re), 1 ether, ACCOUNT)));
-        vm.prank(user);
-        vault.deposit(address(re), 10 ether, ACCOUNT);
-
-        assertTrue(re.reentered());
-        assertFalse(re.reentrySucceeded());
-        assertEq(re.reentryError(), abi.encodeWithSelector(IVault.ReentrantCall.selector));
-        assertEq(vault.accounted(address(re)), 10 ether);
-        assertEq(vault.depositCount(), 1);
-    }
-
-    function test_withdraw_reentryIsBlocked() public {
-        ReenteringToken re = new ReenteringToken();
-        vm.prank(admin);
-        vault.setTokenConfig(address(re), tokenConfig());
-        vm.roll(vm.getBlockNumber() + REFILL);
-        re.mint(user, 10 ether);
-        vm.startPrank(user);
-        re.approve(address(vault), 10 ether);
-        vault.deposit(address(re), 10 ether, ACCOUNT);
-        vm.stopPrank();
-
-        // During the payment's transfer the token calls withdraw again as the operator
-        // would; the guard must refuse it.
-        // The role is read before the prank: a call to vault.OPERATOR_ROLE() would use
-        // the prank up and send the next call from this test contract.
-        bytes32 role = vault.OPERATOR_ROLE();
-        vm.startPrank(admin);
-        vault.revokeRole(role, operator);
-        vault.grantRole(role, address(re));
-        vm.stopPrank();
-        re.arm(address(vault), abi.encodeCall(IVault.withdraw, ("inner", address(re), recipient, 1 ether)));
-        vm.prank(address(re));
-        vault.withdraw("outer", address(re), recipient, 1 ether);
-
-        assertTrue(re.reentered());
-        assertFalse(re.reentrySucceeded());
-        // Refused by the guard, not by any other check.
-        assertEq(re.reentryError(), abi.encodeWithSelector(IVault.ReentrantCall.selector));
-        assertEq(uint8(vault.withdrawal("inner").status), uint8(IVault.WithdrawalStatus.None));
-        assertEq(vault.accounted(address(re)), 9 ether);
     }
 }
