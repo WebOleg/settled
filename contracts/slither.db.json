@@ -1,0 +1,604 @@
+[
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "06ea509b71506aab33e0a8dccaf788250516dbf48733bc1540ff59cda6c93c82",
+    "description": "AccessControlDefaultAdminRulesUpgradeable._getAccessControlDefaultAdminRulesStorage() (lib/openzeppelin-contracts-upgradeable/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol#61-65) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts-upgradeable/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol#62-64)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "feb1b112432398f517a6ab9498fbf47ee9b18f7231f726720e343a8e968f4cb9",
+    "description": "AccessControlUpgradeable._getAccessControlStorage() (lib/openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol#67-71) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol#68-70)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "b4767a82191845c7bc664020b2db39877afc9ebb0a61d2de00305b9d12fc497f",
+    "description": "Initializable._getInitializableStorage() (lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol#232-237) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol#234-236)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "2930769a4ba35b95cbc23e6f550427c3ecb7c568ae21a234e4122512a5269cd0",
+    "description": "LowLevelCall.bubbleRevert() (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#114-120) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#115-119)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "a7dcbb647966bf91c7c21655bdac350bf07a5edb29eb60abd5c65a673f56dd89",
+    "description": "LowLevelCall.bubbleRevert(bytes) (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#122-126) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#123-125)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "19f599fd29e8a7c58d7ab3400836395c241fe80e33d218e24f4626e391cb08e7",
+    "description": "LowLevelCall.callNoReturn(address,uint256,bytes) (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#19-23) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#20-22)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "0b4c44aec97f26397817efbfae7ba26d4f2f081ca85e94c17fa7c2eaace831fa",
+    "description": "LowLevelCall.callReturn64Bytes(address,uint256,bytes) (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#38-48) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#43-47)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "9047e6187fec48b86594b427b2a787e06aa17b09ac91dce844a111934d30ed51",
+    "description": "LowLevelCall.delegatecallNoReturn(address,bytes) (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#74-78) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#75-77)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "5b1436bdf56957f08ba881491cb68a3b2087aee34cd9d219b914a43939865a5f",
+    "description": "LowLevelCall.delegatecallReturn64Bytes(address,bytes) (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#85-94) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#89-93)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "4e15c4ba25819dbfc6efeb55fb7f1683c15696b0b91f76148c9fd3ef45ab614a",
+    "description": "LowLevelCall.returnData() (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#104-111) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#105-110)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "dc72564ba9636879d04661070fe748bc70290cb2c4004c43094e7957f6b60dde",
+    "description": "LowLevelCall.returnDataSize() (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#97-101) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#98-100)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "89f81138e7cc8a75d27373e0427c89a50925b9c4ac87ab2eaf65fc59c2f2b43a",
+    "description": "LowLevelCall.staticcallNoReturn(address,bytes) (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#51-55) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#52-54)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "69f004a736f44f38970ea592d877103fc0a03ec3ffcfe73bf52ca473994cee87",
+    "description": "LowLevelCall.staticcallReturn64Bytes(address,bytes) (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#62-71) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#66-70)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "0aca81f4c74fc46475cf143b1175b6644f87efde3400099cf420cc6d46132992",
+    "description": "Math._zeroBytes(bytes) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#478-490) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#482-484)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "28bdebcd76b79ef2976918aae40b2d93a0922c69961989873a3970a98b70bc7f",
+    "description": "Math.add512(uint256,uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#25-30) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#26-29)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "6573c467bc9e0b668393b654835d00ccad45b96f3847ce70688f03332a48aca1",
+    "description": "Math.log2(uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#619-658) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#655-657)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "168b15c466213dab4f22538081a848ff5bb2677ed1f68f8a6e3c5cec40bb386c",
+    "description": "Math.mul512(uint256,uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#37-46) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#41-45)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "1bd732c19519e123841ebb947318ac5e5c5dd6dd254899214fe78b2834b787e2",
+    "description": "Math.mulDiv(uint256,uint256,uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#206-277) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#229-236)\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#242-251)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "7d30224ad923fb46b530816990ce5e4fbe1512dd2fa9f27e469f40cae1573b3f",
+    "description": "Math.tryDiv(uint256,uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#89-97) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#92-95)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "7313f74380b103670486dbd8cf457c4b4778807730acf647419c5b82c007e98d",
+    "description": "Math.tryMod(uint256,uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#102-110) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#105-108)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "40f8056918b342873870666ee9219ff54e855f6acce43ca8a9cdb34b4a8692d1",
+    "description": "Math.tryModExp(bytes,bytes,bytes) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#451-473) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#463-472)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "48df44bd50eb3c0995f482fc56294b5ac38532faa71891daeaba1dd47910454d",
+    "description": "Math.tryModExp(uint256,uint256,uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#411-435) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#413-434)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "0614eaa799c65c7a0dd915c72c766983762e740a48c1b88d4d9b80d132c5e1f7",
+    "description": "Math.tryMul(uint256,uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#73-84) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#76-80)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "514042b8e90a4f94cc8e124d087dd1ee57e83611d0d7143d6ea91f34a1a40c2b",
+    "description": "Panic.panic(uint256) (lib/openzeppelin-contracts/contracts/utils/Panic.sol#50-56) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/Panic.sol#51-55)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "871438c7e670857d2a2cf074ffd0ecfe9f319c51bef3a4bbaccace93eb1553db",
+    "description": "PausableUpgradeable._getPausableStorage() (lib/openzeppelin-contracts-upgradeable/contracts/utils/PausableUpgradeable.sol#27-31) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts-upgradeable/contracts/utils/PausableUpgradeable.sol#28-30)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "34f9a9306e1110542216cbccf2fca90cca99dfbf63bb6c8f67872d4824c90459",
+    "description": "SafeCast.toUint(bool) (lib/openzeppelin-contracts/contracts/utils/math/SafeCast.sol#1157-1161) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/math/SafeCast.sol#1158-1160)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "fbb81f03f1ad3636167f248ae6d92b4ed18580c07828c7ece89f7a60dd8a0dff",
+    "description": "SafeERC20._safeApprove(IERC20,address,uint256,bool) (lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol#267-291) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol#270-290)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "2e4ab6ee6d34a1ad1e875dbb9d306e369d818eb56ce463ba31c5f17842492019",
+    "description": "SafeERC20._safeTransfer(IERC20,address,uint256,bool) (lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol#188-212) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol#191-211)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "6460fa34afc0b025d1e00ec548436085d88eab2b80c84c9fd22040e91011d104",
+    "description": "SafeERC20._safeTransferFrom(IERC20,address,address,uint256,bool) (lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol#224-256) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol#233-255)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "7d05c864c11a3dca15fd8c2d8f9183e5a53438e99f35f1403ebfeae6257f6049",
+    "description": "SafeERC20.tryGetDecimals(IERC20) (lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol#169-177) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol#171-176)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "0cb0950f0a0659779cfbb710140755d3c77f5a3e0cd20665f14e2c29ffa77241",
+    "description": "StorageSlot.getAddressSlot(bytes32) (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#66-70) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#67-69)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "983222c57c42f357d634e6a0307e308f2f0068150a399b605dcd74e034e93c8b",
+    "description": "StorageSlot.getBooleanSlot(bytes32) (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#75-79) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#76-78)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "6e227cedcd7e749e974202ff8de10aac20188eab08f34d87055eed0e201722d2",
+    "description": "StorageSlot.getBytes32Slot(bytes32) (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#84-88) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#85-87)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "749137134693cf0304f52b590e5a47c5286e0c8814e75ef8be3f6159fd60f08c",
+    "description": "StorageSlot.getBytesSlot(bytes) (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#138-142) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#139-141)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "5312cebb2ab4b8c384cec1819b8568b6c3421d67d46e2d67394b702843826ee6",
+    "description": "StorageSlot.getBytesSlot(bytes32) (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#129-133) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#130-132)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "39b269e77ca4a55a660c8ff6fb0327594b7836943bf18153a5a3f415eaec6ee2",
+    "description": "StorageSlot.getInt256Slot(bytes32) (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#102-106) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#103-105)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "a06128e1b1c97ee25c55d74dda6e1aaa0976f9d134f60bf4344ab3080b21abd2",
+    "description": "StorageSlot.getStringSlot(bytes32) (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#111-115) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#112-114)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "6a9ae1f07a6a025e863e9db6b62be4f7010ba985b05c152e4f03dae1893353f7",
+    "description": "StorageSlot.getStringSlot(string) (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#120-124) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#121-123)\n"
+  },
+  {
+    "check": "assembly",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "e0999a78e2a4800028a800b8f94e81bd4b1fcbb9c2c0021af31da78c22e747e4",
+    "description": "StorageSlot.getUint256Slot(bytes32) (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#93-97) uses assembly\n\t- INLINE ASM (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#94-96)\n"
+  },
+  {
+    "check": "divide-before-multiply",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "id": "8e730c3dca57b2bc6eefc8e55d5591610bba754f12e91d001d76536c11c7c174",
+    "description": "Math.invMod(uint256,uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#317-363) performs a multiplication on the result of a division:\n\t- quotient = gcd / remainder (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#339)\n\t- (gcd,remainder) = (remainder,gcd - remainder * quotient) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#341-348)\n"
+  },
+  {
+    "check": "divide-before-multiply",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "id": "f3c05efec8e6d330b72ecfb3a62a9cfa0a347f661b5735a7e7c2574a354ecc39",
+    "description": "Math.mulDiv(uint256,uint256,uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#206-277) performs a multiplication on the result of a division:\n\t- denominator = denominator / twos (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#244)\n\t- inverse *= 2 - denominator * inverse (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#263)\n"
+  },
+  {
+    "check": "divide-before-multiply",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "id": "96b8f0c0471d04ca494a1eb1f6d41b964d7198b776a894d7f4b9a018b99fcb00",
+    "description": "Math.mulDiv(uint256,uint256,uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#206-277) performs a multiplication on the result of a division:\n\t- denominator = denominator / twos (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#244)\n\t- inverse *= 2 - denominator * inverse (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#264)\n"
+  },
+  {
+    "check": "divide-before-multiply",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "id": "8d23869d6808590b4243d03e5263dec8d65bd46991a40de4edcd0785f2d6933d",
+    "description": "Math.mulDiv(uint256,uint256,uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#206-277) performs a multiplication on the result of a division:\n\t- denominator = denominator / twos (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#244)\n\t- inverse *= 2 - denominator * inverse (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#265)\n"
+  },
+  {
+    "check": "divide-before-multiply",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "id": "d749c8ec4880f8e1322100d050046001f687f990117af3c3fed794954e9bc83d",
+    "description": "Math.mulDiv(uint256,uint256,uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#206-277) performs a multiplication on the result of a division:\n\t- denominator = denominator / twos (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#244)\n\t- inverse *= 2 - denominator * inverse (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#266)\n"
+  },
+  {
+    "check": "divide-before-multiply",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "id": "dceb850138674cff0efb9ce45492b1f3c832b4be04f9983e97cf9b519960630e",
+    "description": "Math.mulDiv(uint256,uint256,uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#206-277) performs a multiplication on the result of a division:\n\t- denominator = denominator / twos (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#244)\n\t- inverse *= 2 - denominator * inverse (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#267)\n"
+  },
+  {
+    "check": "divide-before-multiply",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "id": "fa74b1b14a018c9ef7dae16be9273aa6e4c2661ea05f93da50f1ba075d6b4ddc",
+    "description": "Math.mulDiv(uint256,uint256,uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#206-277) performs a multiplication on the result of a division:\n\t- denominator = denominator / twos (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#244)\n\t- inverse *= 2 - denominator * inverse (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#268)\n"
+  },
+  {
+    "check": "divide-before-multiply",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "id": "78de567e89c8d92ba286127f2401d3833fabd53e14fbf38553c805d401aefa35",
+    "description": "Math.mulDiv(uint256,uint256,uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#206-277) performs a multiplication on the result of a division:\n\t- denominator = denominator / twos (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#244)\n\t- inverse = (3 * denominator) ^ 2 (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#259)\n"
+  },
+  {
+    "check": "divide-before-multiply",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "id": "8b7b598911a68095eb4b853e5972916725f5b9acd2def81703ebbfd6edc20533",
+    "description": "Math.mulDiv(uint256,uint256,uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#206-277) performs a multiplication on the result of a division:\n\t- low = low / twos (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#247)\n\t- result = low * inverse (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#274)\n"
+  },
+  {
+    "check": "incorrect-exp",
+    "impact": "High",
+    "confidence": "Medium",
+    "id": "83603023c15885ad42ce01c58ca872dc8cbd223c57947d08d7918a4fd59ff82a",
+    "description": "Math.mulDiv(uint256,uint256,uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#206-277) has bitwise-xor operator ^ instead of the exponentiation operator **: \n\t - inverse = (3 * denominator) ^ 2 (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#259)\n"
+  },
+  {
+    "check": "msg-value-in-nonpayable",
+    "impact": "High",
+    "confidence": "High",
+    "id": "d2547f35cc1d179d8e12b1226da7cdde51ecfcb0a6d9ea93558b80b7959d6644",
+    "description": "ERC1967Utils._checkNonPayable() (lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Utils.sol#172-176) uses msg.value but is not reachable from any payable function\n"
+  },
+  {
+    "check": "naming-convention",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "1d57a0eae232c722172d42dbb2ad0841ed9d8f83640dd3725ac74288f0335ea2",
+    "description": "Constant AccessControlDefaultAdminRulesUpgradeable.AccessControlDefaultAdminRulesStorageLocation (lib/openzeppelin-contracts-upgradeable/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol#59) is not in UPPER_CASE_WITH_UNDERSCORES\n"
+  },
+  {
+    "check": "naming-convention",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "0c5e75082cb1ae4de268786ea31269d9fb4bcf024dfd1f9d96c81678bd55bc7d",
+    "description": "Constant AccessControlUpgradeable.AccessControlStorageLocation (lib/openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol#65) is not in UPPER_CASE_WITH_UNDERSCORES\n"
+  },
+  {
+    "check": "naming-convention",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "fbd85c56783523089f3dbfced5e6f8d4e44d909f4e2b7fc7497cac12b8f85e38",
+    "description": "Constant PausableUpgradeable.PausableStorageLocation (lib/openzeppelin-contracts-upgradeable/contracts/utils/PausableUpgradeable.sol#25) is not in UPPER_CASE_WITH_UNDERSCORES\n"
+  },
+  {
+    "check": "naming-convention",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "526d5f2cbc4d2589bc768f62507a8fcf052de3ecbdc954e552ef818ae47fc9bb",
+    "description": "Function AccessControlDefaultAdminRulesUpgradeable.__AccessControlDefaultAdminRules_init(uint48,address) (lib/openzeppelin-contracts-upgradeable/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol#70-72) is not in mixedCase\n"
+  },
+  {
+    "check": "naming-convention",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "f5be81c140ab722eff15f86a0005de8be84061fc272eda88a1baf1305d0a5c76",
+    "description": "Function AccessControlDefaultAdminRulesUpgradeable.__AccessControlDefaultAdminRules_init_unchained(uint48,address) (lib/openzeppelin-contracts-upgradeable/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol#74-81) is not in mixedCase\n"
+  },
+  {
+    "check": "naming-convention",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "a333fa38b5f96027543bfa2131aac6765059644ab6c7dae2f8d357b5fbaa2f2b",
+    "description": "Function AccessControlUpgradeable.__AccessControl_init() (lib/openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol#82-83) is not in mixedCase\n"
+  },
+  {
+    "check": "naming-convention",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "226e7d5af64c132f41abf0df79c0723e2a9ee53e2961f745732ce61ab1360dbe",
+    "description": "Function AccessControlUpgradeable.__AccessControl_init_unchained() (lib/openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol#85-86) is not in mixedCase\n"
+  },
+  {
+    "check": "naming-convention",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "ec47067e22967ab37ddb79c5eae4c225b0c9f1e4e15f1452db70b0a6f86103e0",
+    "description": "Function ContextUpgradeable.__Context_init() (lib/openzeppelin-contracts-upgradeable/contracts/utils/ContextUpgradeable.sol#18-19) is not in mixedCase\n"
+  },
+  {
+    "check": "naming-convention",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "8629c89abc9e568d22212182eb038287fc4f676ff34add41294173d644b25bcb",
+    "description": "Function ContextUpgradeable.__Context_init_unchained() (lib/openzeppelin-contracts-upgradeable/contracts/utils/ContextUpgradeable.sol#21-22) is not in mixedCase\n"
+  },
+  {
+    "check": "naming-convention",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "f226b70c0c428d938e421293c43b68d973d744168b94b568e0deb7b189c26f50",
+    "description": "Function ERC165Upgradeable.__ERC165_init() (lib/openzeppelin-contracts-upgradeable/contracts/utils/introspection/ERC165Upgradeable.sol#22-23) is not in mixedCase\n"
+  },
+  {
+    "check": "naming-convention",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "85d4e6d503145e70d4f27b51c03c2aecc7efa120329a4cf27b34d33cd9a2c942",
+    "description": "Function ERC165Upgradeable.__ERC165_init_unchained() (lib/openzeppelin-contracts-upgradeable/contracts/utils/introspection/ERC165Upgradeable.sol#25-26) is not in mixedCase\n"
+  },
+  {
+    "check": "naming-convention",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "3c6579b79ed27f97c3788555e43262cc32f29f77636170a1fcabac06b58d2589",
+    "description": "Function IERC6372.CLOCK_MODE() (lib/openzeppelin-contracts/contracts/interfaces/IERC6372.sol#18) is not in mixedCase\n"
+  },
+  {
+    "check": "naming-convention",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "e6eb49a8474ee89911571567ab886a806c53ce65d23a5eda711bcaf34fb163ce",
+    "description": "Function PausableUpgradeable.__Pausable_init() (lib/openzeppelin-contracts-upgradeable/contracts/utils/PausableUpgradeable.sol#77-78) is not in mixedCase\n"
+  },
+  {
+    "check": "naming-convention",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "ff7188fd803c6119535c59c84febe5219fc17cabd9b56b619f8b9d9185aec81b",
+    "description": "Function PausableUpgradeable.__Pausable_init_unchained() (lib/openzeppelin-contracts-upgradeable/contracts/utils/PausableUpgradeable.sol#80-81) is not in mixedCase\n"
+  },
+  {
+    "check": "naming-convention",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "bfe49cc9b28397f73932ef963ff532a1f0ce51ddd0b26dae025d661602049864",
+    "description": "Variable UUPSUpgradeable.__self (lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol#23) is not in mixedCase\n"
+  },
+  {
+    "check": "pragma",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "bf41438e2d4c62cd4fd5867db7c3b9ec0f2ab46b413951fe523c8cffb1fbf648",
+    "description": "8 different versions of Solidity are used:\n\t- Version constraint ^0.8.20 is used by:\n\t\t-^0.8.20 (lib/openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol#4)\n\t\t-^0.8.20 (lib/openzeppelin-contracts-upgradeable/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol#4)\n\t\t-^0.8.20 (lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol#3)\n\t\t-^0.8.20 (lib/openzeppelin-contracts-upgradeable/contracts/utils/ContextUpgradeable.sol#4)\n\t\t-^0.8.20 (lib/openzeppelin-contracts-upgradeable/contracts/utils/PausableUpgradeable.sol#4)\n\t\t-^0.8.20 (lib/openzeppelin-contracts-upgradeable/contracts/utils/introspection/ERC165Upgradeable.sol#4)\n\t\t-^0.8.20 (lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol#4)\n\t\t-^0.8.20 (lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol#4)\n\t\t-^0.8.20 (lib/openzeppelin-contracts/contracts/utils/Address.sol#4)\n\t\t-^0.8.20 (lib/openzeppelin-contracts/contracts/utils/Errors.sol#4)\n\t\t-^0.8.20 (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#4)\n\t\t-^0.8.20 (lib/openzeppelin-contracts/contracts/utils/Panic.sol#4)\n\t\t-^0.8.20 (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#5)\n\t\t-^0.8.20 (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#4)\n\t\t-^0.8.20 (lib/openzeppelin-contracts/contracts/utils/math/SafeCast.sol#5)\n\t\t-^0.8.20 (lib/openzeppelin-contracts/contracts/utils/types/Time.sol#4)\n\t- Version constraint >=0.8.4 is used by:\n\t\t->=0.8.4 (lib/openzeppelin-contracts/contracts/access/IAccessControl.sol#4)\n\t\t->=0.8.4 (lib/openzeppelin-contracts/contracts/access/extensions/IAccessControlDefaultAdminRules.sol#4)\n\t- Version constraint >=0.6.2 is used by:\n\t\t->=0.6.2 (lib/openzeppelin-contracts/contracts/interfaces/IERC1363.sol#4)\n\t\t->=0.6.2 (lib/openzeppelin-contracts/contracts/interfaces/IERC20Metadata.sol#4)\n\t\t->=0.6.2 (lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol#4)\n\t- Version constraint >=0.4.16 is used by:\n\t\t->=0.4.16 (lib/openzeppelin-contracts/contracts/interfaces/IERC165.sol#4)\n\t\t->=0.4.16 (lib/openzeppelin-contracts/contracts/interfaces/IERC20.sol#4)\n\t\t->=0.4.16 (lib/openzeppelin-contracts/contracts/interfaces/IERC5313.sol#4)\n\t\t->=0.4.16 (lib/openzeppelin-contracts/contracts/interfaces/IERC6372.sol#4)\n\t\t->=0.4.16 (lib/openzeppelin-contracts/contracts/interfaces/draft-IERC1822.sol#4)\n\t\t->=0.4.16 (lib/openzeppelin-contracts/contracts/proxy/beacon/IBeacon.sol#4)\n\t\t->=0.4.16 (lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol#4)\n\t\t->=0.4.16 (lib/openzeppelin-contracts/contracts/utils/introspection/IERC165.sol#4)\n\t- Version constraint >=0.4.11 is used by:\n\t\t->=0.4.11 (lib/openzeppelin-contracts/contracts/interfaces/IERC1967.sol#4)\n\t- Version constraint ^0.8.21 is used by:\n\t\t-^0.8.21 (lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Utils.sol#4)\n\t- Version constraint ^0.8.22 is used by:\n\t\t-^0.8.22 (lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol#4)\n\t- Version constraint 0.8.39 is used by:\n\t\t-0.8.39 (src/Vault.sol#2)\n\t\t-0.8.39 (src/interfaces/IVault.sol#2)\n"
+  },
+  {
+    "check": "solc-version",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "7054e36651b4766c39eb53a98afe661d79847bd242af70928e27bc5d999aedd0",
+    "description": "Version constraint >=0.4.11 contains known severe issues (https://solidity.readthedocs.io/en/latest/bugs.html)\n\t- DirtyBytesArrayToStorage\n\t- KeccakCaching\n\t- EmptyByteArrayCopy\n\t- DynamicArrayCleanup\n\t- ImplicitConstructorCallvalueCheck\n\t- TupleAssignmentMultiStackSlotComponents\n\t- MemoryArrayCreationOverflow\n\t- privateCanBeOverridden\n\t- SignedArrayStorageCopy\n\t- UninitializedFunctionPointerInConstructor_0.4.x\n\t- IncorrectEventSignatureInLibraries_0.4.x\n\t- ExpExponentCleanup\n\t- NestedArrayFunctionCallDecoder\n\t- ZeroFunctionSelector\n\t- DelegateCallReturnValue\n\t- ECRecoverMalformedInput\n\t- SkipEmptyStringLiteral.\nIt is used by:\n\t- >=0.4.11 (lib/openzeppelin-contracts/contracts/interfaces/IERC1967.sol#4)\n"
+  },
+  {
+    "check": "solc-version",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "75aa5f945683ac75864da9f115cb7b9b329710ead86656a3554f774bab8a70b5",
+    "description": "Version constraint >=0.4.16 contains known severe issues (https://solidity.readthedocs.io/en/latest/bugs.html)\n\t- DirtyBytesArrayToStorage\n\t- ABIDecodeTwoDimensionalArrayMemory\n\t- KeccakCaching\n\t- EmptyByteArrayCopy\n\t- DynamicArrayCleanup\n\t- ImplicitConstructorCallvalueCheck\n\t- TupleAssignmentMultiStackSlotComponents\n\t- MemoryArrayCreationOverflow\n\t- privateCanBeOverridden\n\t- SignedArrayStorageCopy\n\t- ABIEncoderV2StorageArrayWithMultiSlotElement\n\t- DynamicConstructorArgumentsClippedABIV2\n\t- UninitializedFunctionPointerInConstructor_0.4.x\n\t- IncorrectEventSignatureInLibraries_0.4.x\n\t- ExpExponentCleanup\n\t- NestedArrayFunctionCallDecoder\n\t- ZeroFunctionSelector.\nIt is used by:\n\t- >=0.4.16 (lib/openzeppelin-contracts/contracts/interfaces/IERC165.sol#4)\n\t- >=0.4.16 (lib/openzeppelin-contracts/contracts/interfaces/IERC20.sol#4)\n\t- >=0.4.16 (lib/openzeppelin-contracts/contracts/interfaces/IERC5313.sol#4)\n\t- >=0.4.16 (lib/openzeppelin-contracts/contracts/interfaces/IERC6372.sol#4)\n\t- >=0.4.16 (lib/openzeppelin-contracts/contracts/interfaces/draft-IERC1822.sol#4)\n\t- >=0.4.16 (lib/openzeppelin-contracts/contracts/proxy/beacon/IBeacon.sol#4)\n\t- >=0.4.16 (lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol#4)\n\t- >=0.4.16 (lib/openzeppelin-contracts/contracts/utils/introspection/IERC165.sol#4)\n"
+  },
+  {
+    "check": "solc-version",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "0b3a6cfa84d1a5c1b79f5ed705cf9db6002832d0d577a5599ad1241c208e5667",
+    "description": "Version constraint >=0.6.2 contains known severe issues (https://solidity.readthedocs.io/en/latest/bugs.html)\n\t- MissingSideEffectsOnSelectorAccess\n\t- AbiReencodingHeadOverflowWithStaticArrayCleanup\n\t- DirtyBytesArrayToStorage\n\t- NestedCalldataArrayAbiReencodingSizeValidation\n\t- ABIDecodeTwoDimensionalArrayMemory\n\t- KeccakCaching\n\t- EmptyByteArrayCopy\n\t- DynamicArrayCleanup\n\t- MissingEscapingInFormatting\n\t- ArraySliceDynamicallyEncodedBaseType\n\t- ImplicitConstructorCallvalueCheck\n\t- TupleAssignmentMultiStackSlotComponents\n\t- MemoryArrayCreationOverflow.\nIt is used by:\n\t- >=0.6.2 (lib/openzeppelin-contracts/contracts/interfaces/IERC1363.sol#4)\n\t- >=0.6.2 (lib/openzeppelin-contracts/contracts/interfaces/IERC20Metadata.sol#4)\n\t- >=0.6.2 (lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol#4)\n"
+  },
+  {
+    "check": "solc-version",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "028d10a92c5301ecb9625b9551bb3bd671d57418958acb53e9bb1b9a790c5c91",
+    "description": "Version constraint >=0.8.4 contains known severe issues (https://solidity.readthedocs.io/en/latest/bugs.html)\n\t- FullInlinerNonExpressionSplitArgumentEvaluationOrder\n\t- MissingSideEffectsOnSelectorAccess\n\t- AbiReencodingHeadOverflowWithStaticArrayCleanup\n\t- DirtyBytesArrayToStorage\n\t- DataLocationChangeInInternalOverride\n\t- NestedCalldataArrayAbiReencodingSizeValidation\n\t- SignedImmutables.\nIt is used by:\n\t- >=0.8.4 (lib/openzeppelin-contracts/contracts/access/IAccessControl.sol#4)\n\t- >=0.8.4 (lib/openzeppelin-contracts/contracts/access/extensions/IAccessControlDefaultAdminRules.sol#4)\n"
+  },
+  {
+    "check": "solc-version",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "ff7223cb6ccf4c3ebbd09926f5603b034e177bdfd1584cf93f9826fb4b74a296",
+    "description": "Version constraint ^0.8.20 contains known severe issues (https://solidity.readthedocs.io/en/latest/bugs.html)\n\t- VerbatimInvalidDeduplication\n\t- FullInlinerNonExpressionSplitArgumentEvaluationOrder\n\t- MissingSideEffectsOnSelectorAccess.\nIt is used by:\n\t- ^0.8.20 (lib/openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol#4)\n\t- ^0.8.20 (lib/openzeppelin-contracts-upgradeable/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol#4)\n\t- ^0.8.20 (lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol#3)\n\t- ^0.8.20 (lib/openzeppelin-contracts-upgradeable/contracts/utils/ContextUpgradeable.sol#4)\n\t- ^0.8.20 (lib/openzeppelin-contracts-upgradeable/contracts/utils/PausableUpgradeable.sol#4)\n\t- ^0.8.20 (lib/openzeppelin-contracts-upgradeable/contracts/utils/introspection/ERC165Upgradeable.sol#4)\n\t- ^0.8.20 (lib/openzeppelin-contracts/contracts/proxy/utils/Initializable.sol#4)\n\t- ^0.8.20 (lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol#4)\n\t- ^0.8.20 (lib/openzeppelin-contracts/contracts/utils/Address.sol#4)\n\t- ^0.8.20 (lib/openzeppelin-contracts/contracts/utils/Errors.sol#4)\n\t- ^0.8.20 (lib/openzeppelin-contracts/contracts/utils/LowLevelCall.sol#4)\n\t- ^0.8.20 (lib/openzeppelin-contracts/contracts/utils/Panic.sol#4)\n\t- ^0.8.20 (lib/openzeppelin-contracts/contracts/utils/StorageSlot.sol#5)\n\t- ^0.8.20 (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#4)\n\t- ^0.8.20 (lib/openzeppelin-contracts/contracts/utils/math/SafeCast.sol#5)\n\t- ^0.8.20 (lib/openzeppelin-contracts/contracts/utils/types/Time.sol#4)\n"
+  },
+  {
+    "check": "solc-version",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "a119fe791dd36767b538304a3f2b63ea81047a5f5ead2cc9225dfa47aeaf5d20",
+    "description": "Version constraint ^0.8.21 contains known severe issues (https://solidity.readthedocs.io/en/latest/bugs.html)\n\t- VerbatimInvalidDeduplication.\nIt is used by:\n\t- ^0.8.21 (lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Utils.sol#4)\n"
+  },
+  {
+    "check": "solc-version",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "f27c6bd32e96dc91c475ef004da08a7975fafcfa15e4b4779017cf20352cab9d",
+    "description": "Version constraint ^0.8.22 contains known severe issues (https://solidity.readthedocs.io/en/latest/bugs.html)\n\t- VerbatimInvalidDeduplication.\nIt is used by:\n\t- ^0.8.22 (lib/openzeppelin-contracts/contracts/proxy/utils/UUPSUpgradeable.sol#4)\n"
+  },
+  {
+    "check": "timestamp",
+    "impact": "Low",
+    "confidence": "Medium",
+    "id": "3d4764d6c32913032d3e19ac90520c962afb79e9b227427ed4be525273430070",
+    "description": "AccessControlDefaultAdminRulesUpgradeable._acceptDefaultAdminTransfer() (lib/openzeppelin-contracts-upgradeable/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol#265-275) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- ! _isScheduleSet(schedule) || ! _hasSchedulePassed(schedule) (lib/openzeppelin-contracts-upgradeable/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol#268)\n"
+  },
+  {
+    "check": "timestamp",
+    "impact": "Low",
+    "confidence": "Medium",
+    "id": "1b0dc55be34400b633ec77034c041ad57e3fd0557ec61a0cd55249317616055e",
+    "description": "AccessControlDefaultAdminRulesUpgradeable._hasSchedulePassed(uint48) (lib/openzeppelin-contracts-upgradeable/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol#398-400) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- schedule < block.timestamp (lib/openzeppelin-contracts-upgradeable/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol#399)\n"
+  },
+  {
+    "check": "timestamp",
+    "impact": "Low",
+    "confidence": "Medium",
+    "id": "ae717c620c76b5927fe973cee39d30f13a448011f4cbc99c66e6e9d75e961b42",
+    "description": "AccessControlDefaultAdminRulesUpgradeable.defaultAdminDelay() (lib/openzeppelin-contracts-upgradeable/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol#198-202) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- (_isScheduleSet(schedule) && _hasSchedulePassed(schedule)) (lib/openzeppelin-contracts-upgradeable/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol#201)\n"
+  },
+  {
+    "check": "timestamp",
+    "impact": "Low",
+    "confidence": "Medium",
+    "id": "249f74f60471b36080f912d125c66ca34cd1a338a6fb854e8f6ac7c1ff41b191",
+    "description": "AccessControlDefaultAdminRulesUpgradeable.pendingDefaultAdminDelay() (lib/openzeppelin-contracts-upgradeable/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol#205-209) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- (_isScheduleSet(schedule) && ! _hasSchedulePassed(schedule)) (lib/openzeppelin-contracts-upgradeable/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol#208)\n"
+  },
+  {
+    "check": "timestamp",
+    "impact": "Low",
+    "confidence": "Medium",
+    "id": "217106c1777237d425f84290b9287df268f8712a2bcd5ff37194ae75270cefe1",
+    "description": "AccessControlDefaultAdminRulesUpgradeable.renounceRole(bytes32,address) (lib/openzeppelin-contracts-upgradeable/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol#130-140) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- newDefaultAdmin != address(0) || ! _isScheduleSet(schedule) || ! _hasSchedulePassed(schedule) (lib/openzeppelin-contracts-upgradeable/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol#134)\n"
+  },
+  {
+    "check": "timestamp",
+    "impact": "Low",
+    "confidence": "Medium",
+    "id": "ec0c1af4ada718352cc278020e0496fca41c07c22c2788ce359e1c4f46dc07ec",
+    "description": "Time._getFullAt(Time.Delay,uint48) (lib/openzeppelin-contracts/contracts/utils/types/Time.sol#74-80) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- effect <= timepoint (lib/openzeppelin-contracts/contracts/utils/types/Time.sol#79)\n"
+  },
+  {
+    "check": "too-many-digits",
+    "impact": "Informational",
+    "confidence": "Medium",
+    "id": "0d746317b0af6f83551b3f25e77c70dfda35a924dd013ba0774527adcc3b8c0b",
+    "description": "Math.log2(uint256) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#619-658) uses literals with too many digits:\n\t- r = r | byte(uint256,uint256)(x >> r,0x0000010102020202030303030303030300000000000000000000000000000000) (lib/openzeppelin-contracts/contracts/utils/math/Math.sol#656)\n"
+  },
+  {
+    "check": "unindexed-event-address",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "d999058f1dbd33f09b6c1e735fb739dfa8446c5d745ae549f11cbd746ee55943",
+    "description": "Event IERC1967.AdminChanged(address,address) (lib/openzeppelin-contracts/contracts/interfaces/IERC1967.sol#18) has address parameters but no indexed parameters\n"
+  },
+  {
+    "check": "unindexed-event-address",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "e6500e50e2b123805c9216702ab8971cdee77d51bf3684bbc30510649e8b0878",
+    "description": "Event PausableUpgradeable.Paused(address) (lib/openzeppelin-contracts-upgradeable/contracts/utils/PausableUpgradeable.sol#36) has address parameters but no indexed parameters\n"
+  },
+  {
+    "check": "unindexed-event-address",
+    "impact": "Informational",
+    "confidence": "High",
+    "id": "e21ee8bc521508cae5049f98c79ad42a28984be14feab4548fe4b122f6cd11de",
+    "description": "Event PausableUpgradeable.Unpaused(address) (lib/openzeppelin-contracts-upgradeable/contracts/utils/PausableUpgradeable.sol#41) has address parameters but no indexed parameters\n"
+  },
+  {
+    "check": "unused-return",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "id": "1861b2e607ad61d7607ca9af61c1a162dff3c1258001ab1c8feef80413f43781",
+    "description": "ERC1967Utils.upgradeBeaconToAndCall(address,bytes) (lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Utils.sol#157-166) ignores return value by Address.functionDelegateCall(IBeacon(newBeacon).implementation(),data) (lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Utils.sol#162)\n"
+  },
+  {
+    "check": "unused-return",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "id": "6205fa896c333a3cd87351e7366fb7723a61a4319bb12b54867a21b6b2edb722",
+    "description": "ERC1967Utils.upgradeToAndCall(address,bytes) (lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Utils.sol#67-76) ignores return value by Address.functionDelegateCall(newImplementation,data) (lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Utils.sol#72)\n"
+  },
+  {
+    "check": "unused-return",
+    "impact": "Medium",
+    "confidence": "Medium",
+    "id": "388573f8bbec31739345f9b5fed7ca8559aa552841f7b7de44524fe595ca9f87",
+    "description": "Time.get(Time.Delay) (lib/openzeppelin-contracts/contracts/utils/types/Time.sol#93-96) ignores return value by (delay,None,None) = self.getFull() (lib/openzeppelin-contracts/contracts/utils/types/Time.sol#94)\n"
+  }
+]

@@ -7,7 +7,7 @@ import {TimelockController} from "@openzeppelin/contracts/governance/TimelockCon
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {IVault} from "../../src/interfaces/IVault.sol";
-import {Vault} from "../../src/Vault.sol";
+import {Vault, VaultCore} from "../../src/Vault.sol";
 
 /// @notice The deployment that cmd/vault-deploy performs on the devnet, step for step:
 /// a timelock that administers itself, the vault behind a proxy initialized in the same
@@ -36,8 +36,9 @@ contract VaultDeployTest is Test {
         vm.startPrank(deployer);
         timelock = new TimelockController(TIMELOCK_DELAY, proposers, proposers, address(0));
         Vault implementation = new Vault();
-        bytes memory init =
-            abi.encodeCall(Vault.initialize, (address(timelock), ADMIN_DELAY, operator, guardian, WITHDRAWAL_DELAY));
+        bytes memory init = abi.encodeCall(
+            VaultCore.initialize, (address(timelock), ADMIN_DELAY, operator, guardian, WITHDRAWAL_DELAY)
+        );
         vault = Vault(payable(address(new ERC1967Proxy(address(implementation), init))));
         vm.stopPrank();
         native = vault.NATIVE();

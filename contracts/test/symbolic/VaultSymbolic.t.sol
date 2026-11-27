@@ -4,7 +4,7 @@ pragma solidity 0.8.39;
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {IVault} from "../../src/interfaces/IVault.sol";
-import {Vault} from "../../src/Vault.sol";
+import {Vault, VaultCore} from "../../src/Vault.sol";
 
 /// @dev The cheat codes Halmos supports, called directly. forge-std's Test is not used
 /// here: its setup calls cheat codes Halmos does not implement.
@@ -42,7 +42,7 @@ contract VaultSymbolicTest {
 
     function setUp() public {
         Vault implementation = new Vault();
-        bytes memory init = abi.encodeCall(Vault.initialize, (ADMIN, 1 days, OPERATOR, GUARDIAN, 1800));
+        bytes memory init = abi.encodeCall(VaultCore.initialize, (ADMIN, 1 days, OPERATOR, GUARDIAN, 1800));
         vault = Vault(payable(address(new ERC1967Proxy(address(implementation), init))));
         native = vault.NATIVE();
         vm.prank(ADMIN);

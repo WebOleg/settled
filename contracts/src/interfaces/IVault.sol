@@ -76,9 +76,6 @@ interface IVault {
     error RoleConflict(address account);
     error ReentrantCall();
 
-    /// @notice The address that stands for ETH in token arguments.
-    function NATIVE() external view returns (address);
-
     /// @notice Credits amount of token to an exchange account. For ETH, token is NATIVE
     /// and msg.value equals amount; for a token, msg.value is 0 and the vault must
     /// receive exactly amount.

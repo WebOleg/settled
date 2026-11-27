@@ -7,7 +7,7 @@ import {
 } from "@openzeppelin/contracts/access/extensions/IAccessControlDefaultAdminRules.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-import {Vault} from "../../src/Vault.sol";
+import {Vault, VaultCore} from "../../src/Vault.sol";
 import {IVault} from "../../src/interfaces/IVault.sol";
 import {FeeOnTransferToken} from "../mocks/FeeOnTransferToken.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
@@ -43,7 +43,8 @@ contract VaultDepositTest is VaultUnitBase {
         Vault implementation = new Vault();
         vm.expectRevert(IVault.ZeroAddress.selector);
         new ERC1967Proxy(
-            address(implementation), abi.encodeCall(Vault.initialize, (admin, ADMIN_DELAY, address(0), guardian, DELAY))
+            address(implementation),
+            abi.encodeCall(VaultCore.initialize, (admin, ADMIN_DELAY, address(0), guardian, DELAY))
         );
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -52,7 +53,7 @@ contract VaultDepositTest is VaultUnitBase {
         );
         new ERC1967Proxy(
             address(implementation),
-            abi.encodeCall(Vault.initialize, (address(0), ADMIN_DELAY, operator, guardian, DELAY))
+            abi.encodeCall(VaultCore.initialize, (address(0), ADMIN_DELAY, operator, guardian, DELAY))
         );
     }
 

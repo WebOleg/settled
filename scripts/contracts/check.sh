@@ -2,10 +2,10 @@
 # Checks the contracts in the pinned Foundry image: formatting, a build without compiler
 # warnings, an artifact for every source file (forge in a broken image once exited 0 and
 # built nothing), forge lint on src/ with no finding, the tests, the gas of the unit
-# tests against .gas-snapshot, and the
-# symbolic tests with Halmos, in its own image (infra/images/halmos), built here when the
-# image for the current Dockerfile and requirements is missing. Run as the calling user, with HOME on
-# .cache/foundry, so files in the repository stay owned by that user and solc is
+# tests against .gas-snapshot; then the symbolic tests with Halmos and the static
+# analysis with Slither, each in its own image (infra/images), built here when the image
+# for the current Dockerfile and requirements is missing. Runs as the calling user, with
+# HOME on .cache/foundry, so files in the repository stay owned by that user and solc is
 # downloaded once.
 set -euo pipefail
 
@@ -69,4 +69,7 @@ out="$(docker run --rm --platform linux/amd64 -u "$(id -u):$(id -g)" -e HOME=/ca
   --solver z3 --match-contract VaultSymbolicTest --solver-timeout-assertion 60000 2>&1)" \
   || { printf '%s\n' "$out" | grep -vE '^\s*$' | tail -30; fail "symbolic tests failed"; }
 printf '%s\n' "$out" | grep -E '^Symbolic test result' | tail -1
+# Slither: every finding fixed in the code or reviewed one by one (docs/review/vault.md).
+out="$(scripts/contracts/slither.sh 2>&1)" || { printf '%s\n' "$out" | tail -40; fail "Slither reports findings not reviewed"; }
+printf '%s\n' "$out" | tail -1
 echo "check-contracts: ok, $sources source files built, tests passed"

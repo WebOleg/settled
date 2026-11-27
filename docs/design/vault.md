@@ -38,7 +38,7 @@ use it.
 ## Deposits
 
 `deposit(token, amount, account)` credits `amount` of `token` to the exchange account
-`account` (a `bytes32` the exchange assigns). ETH is `NATIVE` with `msg.value` equal
+`account` (a `bytes32` the exchange assigns). ETH is `NATIVE`, the ERC-7528 address, with `msg.value` equal
 to `amount`; for a token `msg.value` is 0 and the vault must receive exactly `amount`,
 so tokens that take a fee on transfer are refused rather than credited wrong. The token
 must be allowed and the vault not paused. Each deposit gets the next id, 0, 1, 2, with
@@ -89,8 +89,12 @@ deposits account for, never more.
 ## Upgrades
 
 The vault sits behind an ERC-1967 proxy and upgrades itself (UUPS); only the admin, so
-only through the timelock, can upgrade. State lives in one namespaced storage struct
-(ERC-7201), so a new implementation cannot collide with the slots of the old one. A
+only through the timelock, can upgrade. The code is `VaultCore`; `Vault` is that code
+with its state in the ERC-7201 namespace `settled.storage.Vault`, placed by the compiler
+(`layout at erc7201(...)`), so plain state variables sit away from slot 0 and from the
+namespaces of the OpenZeppelin bases, with no assembly. The compiler lets no contract
+inherit from one that sets its own layout, so each next version is a contract on
+`VaultCore` in the same namespace, as the test mock `VaultV2` is. A
 test reads the proxy's storage slot by slot and checks where each field lives
 ([VaultLayout.t.sol](../../contracts/test/unit/VaultLayout.t.sol)), so reordering,
 retyping or inserting a field fails the check until it is reviewed as a migration. The implementation disables its own initializer, so it cannot be
@@ -179,7 +183,7 @@ and 128 invariant runs of 64 calls; CI runs 10,000 and 512 of 128.
 | Concern | How it is handled |
 |---|---|
 | Reentrancy | Every function that moves value is guarded (`nonReentrant`, the first modifier, on a `transient` variable the compiler keeps in transient storage: no storage slot, cleared after every transaction), and changes state and emits its event before any external call. A token deposit pulls the token last and reverts unless exactly the amount arrived. |
-| Time | The vault's clock (ERC-6372, `clock()` and `CLOCK_MODE()`) is the L2 block number: whoever produces a block chooses its timestamp within the chain's rules, but not its number. Delays and refills are counted in blocks; they are durations because the OP Stack makes a block every 2 s, fixed by derivation, which `make vault-verify` checks against the rollup config. The timelock and the admin handover are OpenZeppelin's and count seconds. If the sequencer stops, it catches up afterwards by making the missed blocks at once, so a queued withdrawal can be due the moment blocks resume, with no time for the guardian in between; an alert on `WithdrawalQueued` and the guardian's pause cover it. |
+| Time | The vault's clock (ERC-6372, `clock()` and `CLOCK_MODE`) is the L2 block number: whoever produces a block chooses its timestamp within the chain's rules, but not its number. Delays and refills are counted in blocks; they are durations because the OP Stack makes a block every 2 s, fixed by derivation, which `make vault-verify` checks against the rollup config. The timelock and the admin handover are OpenZeppelin's and count seconds. If the sequencer stops, it catches up afterwards by making the missed blocks at once, so a queued withdrawal can be due the moment blocks resume, with no time for the guardian in between; an alert on `WithdrawalQueued` and the guardian's pause cover it. |
 | Narrowing | Every conversion to a smaller integer goes through `SafeCast` and reverts rather than truncates. |
 | Tokens that misbehave | `SafeERC20` for tokens that return no value; the received amount is measured, and a difference reverts. Only allowed tokens are accepted. |
 | ETH to a contract that reverts | The payment reverts with `NativeTransferFailed` and the id stays unused, so the ledger can retry or send it elsewhere. |

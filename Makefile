@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts contracts-snapshot l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-upgrade vault-reset l2-logs l2-down l2-reset
+.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts contracts-snapshot contracts-slither-record l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-upgrade vault-reset l2-logs l2-down l2-reset
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
@@ -64,7 +64,7 @@ check-shell: ## shellcheck on every tracked shell script
 check-secrets: ## gitleaks on the full git history, findings redacted
 	@gitleaks git --redact --no-banner --log-level warn . && echo "check-secrets: ok"
 
-check-contracts: ## forge fmt, build without warnings and tests, in the pinned Foundry image
+check-contracts: ## forge fmt, build and lint without findings, tests, gas, Halmos and Slither
 	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/contracts/check.sh
 
 contracts-snapshot: ## Record the gas of the unit tests in contracts/.gas-snapshot, for review
@@ -73,6 +73,9 @@ contracts-snapshot: ## Record the gas of the unit tests in contracts/.gas-snapsh
 	  -v "$(CURDIR)/contracts:/work" -w /work --entrypoint forge $(FOUNDRY_IMAGE) snapshot --match-path 'test/unit/*'
 	@# forge writes the file without a final newline, which check-docs requires of every file.
 	@[ -z "$$(tail -c 1 contracts/.gas-snapshot)" ] || echo >> contracts/.gas-snapshot
+
+contracts-slither-record: ## Record Slither's findings in contracts/slither.db.json, once each is reviewed
+	@scripts/contracts/slither.sh --record
 
 check-go: ## gofmt, go vet and go test on every Go package
 	@files="$$(gofmt -l cmd internal)"; \

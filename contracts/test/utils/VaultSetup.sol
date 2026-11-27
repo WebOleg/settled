@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {IVault} from "../../src/interfaces/IVault.sol";
-import {Vault} from "../../src/Vault.sol";
+import {Vault, VaultCore} from "../../src/Vault.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 
 /// @notice The vault behind its proxy, with ETH and one token allowed and both rate
@@ -42,7 +42,7 @@ abstract contract VaultSetup is Test {
     /// A new vault behind its proxy, initialized in the same transaction.
     function deployVault(address admin_, address operator_, address guardian_) internal returns (Vault) {
         Vault implementation = new Vault();
-        bytes memory init = abi.encodeCall(Vault.initialize, (admin_, ADMIN_DELAY, operator_, guardian_, DELAY));
+        bytes memory init = abi.encodeCall(VaultCore.initialize, (admin_, ADMIN_DELAY, operator_, guardian_, DELAY));
         return Vault(payable(address(new ERC1967Proxy(address(implementation), init))));
     }
 

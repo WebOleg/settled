@@ -6,7 +6,7 @@ import {
     IAccessControlDefaultAdminRules
 } from "@openzeppelin/contracts/access/extensions/IAccessControlDefaultAdminRules.sol";
 
-import {Vault} from "../../src/Vault.sol";
+import {Vault, VaultCore} from "../../src/Vault.sol";
 import {IVault} from "../../src/interfaces/IVault.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {VaultUnitBase} from "../utils/VaultUnitBase.sol";
@@ -87,11 +87,12 @@ contract VaultAdminTest is VaultUnitBase {
         Vault implementation = new Vault();
         vm.expectRevert(abi.encodeWithSelector(IVault.RoleConflict.selector, operator));
         new ERC1967Proxy(
-            address(implementation), abi.encodeCall(Vault.initialize, (admin, ADMIN_DELAY, operator, operator, DELAY))
+            address(implementation),
+            abi.encodeCall(VaultCore.initialize, (admin, ADMIN_DELAY, operator, operator, DELAY))
         );
         vm.expectRevert(abi.encodeWithSelector(IVault.RoleConflict.selector, admin));
         new ERC1967Proxy(
-            address(implementation), abi.encodeCall(Vault.initialize, (admin, ADMIN_DELAY, admin, guardian, DELAY))
+            address(implementation), abi.encodeCall(VaultCore.initialize, (admin, ADMIN_DELAY, admin, guardian, DELAY))
         );
     }
 

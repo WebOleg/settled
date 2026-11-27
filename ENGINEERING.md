@@ -70,9 +70,9 @@ targets.
 | `check-shell` | shellcheck | any finding in a tracked shell script |
 | `check-secrets` | gitleaks | a secret anywhere in the git history; findings are printed redacted |
 | `check-go` | gofmt, go vet, go test | an unformatted file, a vet finding or a failing test |
-| `check-contracts` | [scripts/contracts/check.sh](scripts/contracts/check.sh), forge in the pinned Foundry image | an unformatted contract, a compiler warning, a source file that built no artifact, a failing test, unit test gas that differs from `contracts/.gas-snapshot`, or a symbolic test Halmos does not prove |
+| `check-contracts` | [scripts/contracts/check.sh](scripts/contracts/check.sh), forge in the pinned Foundry image | an unformatted contract, a compiler warning, a source file that built no artifact, a failing test, unit test gas that differs from `contracts/.gas-snapshot`, a symbolic test Halmos does not prove, a forge lint finding, or a Slither finding not reviewed in `contracts/slither.db.json` |
 
-The checks run with gitleaks 8.30.1, shellcheck 0.11.0, Go 1.26.2 and Foundry v1.10.1,
+The checks run with gitleaks 8.30.1, shellcheck 0.11.0, Go 1.26.2, Foundry v1.10.1, Halmos 0.3.3 and Slither 0.11.6,
 locally and in CI. CI installs shellcheck and gitleaks with
 [scripts/ci/install-tools.sh](scripts/ci/install-tools.sh), which checks each release
 archive against its sha256 first, and pins every GitHub action by commit SHA. A tool is
