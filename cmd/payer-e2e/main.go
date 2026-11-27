@@ -16,24 +16,29 @@
 //  7. the signer refuses what the ledger does not hold (another recipient, another
 //     amount, another contract, value) and what passes its velocity limit; a payer
 //     refused waits, records why, and takes no nonce;
-//  8. once final, the indexer settles every withdrawal, the payer closes every
+//  8. the payer's key is rotated in the KMS: a signer started before signs nothing, the
+//     new key pays, and the old one holds no role and is emptied into the new;
+//  9. once final, the indexer settles every withdrawal, the payer closes every
 //     transaction, and the ledger equals what the vault on chain accounts for, to the
 //     wei.
 //
 // The payer holds no key: every transaction is signed by the withdrawal signer
 // (internal/signer), served here over TLS with client certificates as on the devnet,
-// under its policy and against the ledger. It connects as four logins, one per role:
-// the requester, the payer, the signer and the indexer.
+// under its policy and against the ledger, with the operator's key in kms-dev
+// (internal/kmsdev), reached through the AWS SDK. It connects as four logins, one per
+// role: the requester, the payer, the signer and the indexer.
 package main
 
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
 	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -41,6 +46,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
+	kmstypes "github.com/aws/aws-sdk-go-v2/service/kms/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -50,8 +59,11 @@ import (
 
 	"github.com/WebOleg/settled/internal/anvil"
 	"github.com/WebOleg/settled/internal/deposits"
+	"github.com/WebOleg/settled/internal/kmsdev"
 	"github.com/WebOleg/settled/internal/ledger"
 	"github.com/WebOleg/settled/internal/signer"
+	"github.com/WebOleg/settled/internal/sweep"
+	"github.com/WebOleg/settled/internal/txsend"
 	"github.com/WebOleg/settled/internal/vaultconf"
 	"github.com/WebOleg/settled/internal/withdrawals"
 )
@@ -118,10 +130,12 @@ type e2e struct {
 	requester *ledger.Ledger
 	payer     *ledger.Ledger
 	indexer   *deposits.Indexer
-	operator  *ecdsa.PrivateKey
-	// service is the signer, remote the payer's way to it over TLS.
+	// service is the signer, remote the payer's way to it over TLS, kms the KMS its key
+	// is in, and admin the vault's admin on anvil.
 	service *signer.Service
 	remote  *signer.Remote
+	kms     *kmsRig
+	admin   *ecdsa.PrivateKey
 	account common.Hash
 	paid    *big.Int // what the customer has withdrawn
 	ids     []common.Hash
@@ -141,7 +155,19 @@ func run(ctx context.Context, rpcURL, outDir, recordRoot string, requester, paye
 		}
 		addrs[i] = crypto.PubkeyToAddress(keys[i].PublicKey)
 	}
-	vault, err := anvil.DeployVault(ctx, client, outDir, keys[0], anvil.Roles{Admin: addrs[0], Operator: addrs[1], Guardian: addrs[2]}, 30,
+	// The operator's key is made in the KMS and never leaves it; the vault is deployed
+	// with its account as the operator, which anvil then funds for gas.
+	rig, err := startKMS(ctx)
+	if err != nil {
+		return err
+	}
+	defer rig.stop()
+	kmsKey := rig.key
+	if _, err := txsend.Send(ctx, client, keys[0], kmsKey.Address(), anvil.Ether(10), nil); err != nil {
+		return fmt.Errorf("fund the KMS key's account: %w", err)
+	}
+	ok("the operator's key is made in the KMS", fmt.Sprintf("%s, through the AWS SDK; it never leaves the KMS", kmsKey.Address()))
+	vault, err := anvil.DeployVault(ctx, client, outDir, keys[0], anvil.Roles{Admin: addrs[0], Operator: kmsKey.Address(), Guardian: addrs[2]}, 30,
 		anvil.TokenConfig{Allowed: true, Capacity: anvil.Ether(10), RefillPeriod: 1800, LargeThreshold: anvil.Ether(5)})
 	if err != nil {
 		return err
@@ -169,10 +195,10 @@ func run(ctx context.Context, rpcURL, outDir, recordRoot string, requester, paye
 	if err != nil {
 		return err
 	}
-	e := &e2e{ctx: ctx, client: client, vault: vault, requester: requester, payer: payerDB, operator: keys[1],
-		account: common.HexToHash("0xbeef"), paid: new(big.Int),
+	e := &e2e{ctx: ctx, client: client, vault: vault, requester: requester, payer: payerDB,
+		account: common.HexToHash("0xbeef"), paid: new(big.Int), kms: rig, admin: keys[0],
 		indexer: &deposits.Indexer{Chain: deposits.RPC{Client: client}, Ledger: indexerDB, Vault: vault.At, Start: vault.Block, MaxRange: 64, MaxBlocks: 2000},
-		service: &signer.Service{Key: signer.NewFileKey(keys[1]), DB: signerDB.Pool(), Policy: signer.Policy{
+		service: &signer.Service{Key: kmsKey, DB: signerDB.Pool(), Policy: signer.Policy{
 			ChainID: chainID, Vault: vault.At, MaxGas: 500_000, MaxFeeCap: new(big.Int).Mul(big.NewInt(1000), big.NewInt(1e9)),
 			Window: time.Hour, Limit: anvil.Ether(20),
 		}}}
@@ -195,12 +221,64 @@ func run(ctx context.Context, rpcURL, outDir, recordRoot string, requester, paye
 		return err
 	}
 
-	for _, s := range []func() error{e.paidOnce, e.failedSend, e.reorganised, e.twoPayers, e.replaced, e.queued, e.refused, e.final} {
+	for _, s := range []func() error{e.paidOnce, e.failedSend, e.reorganised, e.twoPayers, e.replaced, e.queued, e.refused, e.rotated, e.final} {
 		if err := s(); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// kmsRig is kms-dev on a local port: the operator's key in it, and the admin's and the
+// signer's clients, through the AWS SDK, as on the devnet.
+type kmsRig struct {
+	key                     *signer.KMSKey
+	admin, signer, rotation *kms.Client
+	stop                    func()
+}
+
+// startKMS serves kms-dev on a local port, makes the operator's key in it as the admin,
+// and reaches it as the signer.
+func startKMS(ctx context.Context) (*kmsRig, error) {
+	dir, err := os.MkdirTemp("", "payer-e2e-kms-")
+	if err != nil {
+		return nil, err
+	}
+	// Each run makes its own access keys, as bridge-init.sh does for the devnet.
+	admin, signerID := "AKIA"+strings.Repeat("A", 16), "AKIA"+strings.Repeat("S", 16)
+	adminSecret, signerSecret := rand.Text(), rand.Text()
+	rotationID, rotationSecret := "AKIA"+strings.Repeat("R", 16), rand.Text()
+	srv := &kmsdev.Server{Region: "eu-central-1", Account: "000000000000", Dir: dir, Principals: []kmsdev.Principal{
+		{Name: "admin", AccessKeyID: admin, SecretAccessKey: adminSecret, Actions: []string{"kms:CreateKey", "kms:CreateAlias", "kms:UpdateAlias", "kms:DescribeKey", "kms:GetPublicKey"}},
+		{Name: "withdrawal-signer", AccessKeyID: signerID, SecretAccessKey: signerSecret, Actions: []string{"kms:GetPublicKey", "kms:Sign"}, Keys: []string{"alias/payer"}},
+		{Name: "key-rotation", AccessKeyID: rotationID, SecretAccessKey: rotationSecret, Actions: []string{"kms:GetPublicKey", "kms:Sign"}, Keys: []string{"alias/payer-retiring"}},
+	}}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, err
+	}
+	hs := &http.Server{Handler: srv, ReadHeaderTimeout: 5 * time.Second}
+	go func() { _ = hs.Serve(ln) }()
+	stop := func() { _ = hs.Close(); _ = os.RemoveAll(dir) }
+	client := func(id, secret string) *kms.Client {
+		return kms.New(kms.Options{Region: "eu-central-1", BaseEndpoint: aws.String("http://" + ln.Addr().String()),
+			Credentials: credentials.NewStaticCredentialsProvider(id, secret, "")})
+	}
+	r := &kmsRig{admin: client(admin, adminSecret), signer: client(signerID, signerSecret), rotation: client(rotationID, rotationSecret), stop: stop}
+	made, err := r.admin.CreateKey(ctx, &kms.CreateKeyInput{KeySpec: kmstypes.KeySpecEccSecgP256k1, KeyUsage: kmstypes.KeyUsageTypeSignVerify})
+	if err != nil {
+		stop()
+		return nil, err
+	}
+	if _, err := r.admin.CreateAlias(ctx, &kms.CreateAliasInput{AliasName: aws.String("alias/payer"), TargetKeyId: made.KeyMetadata.KeyId}); err != nil {
+		stop()
+		return nil, err
+	}
+	if r.key, err = signer.NewKMSKey(ctx, r.signer, "alias/payer"); err != nil {
+		stop()
+		return nil, err
+	}
+	return r, nil
 }
 
 // serveSigner serves the signer on a local port over TLS, with the devnet's kind of
@@ -447,7 +525,7 @@ func (e *e2e) twoPayers() error {
 		}
 		tos = append(tos, to)
 	}
-	before, err := e.client.NonceAt(e.ctx, crypto.PubkeyToAddress(e.operator.PublicKey), nil)
+	before, err := e.client.NonceAt(e.ctx, e.remote.Address(), nil)
 	if err != nil {
 		return err
 	}
@@ -488,7 +566,7 @@ func (e *e2e) twoPayers() error {
 			return err
 		}
 	}
-	after, err := e.client.NonceAt(e.ctx, crypto.PubkeyToAddress(e.operator.PublicKey), nil)
+	after, err := e.client.NonceAt(e.ctx, e.remote.Address(), nil)
 	if err != nil {
 		return err
 	}
@@ -697,7 +775,112 @@ func (e *e2e) refused() error {
 	return nil
 }
 
-// 8. Final: settled, closed, and equal to the vault.
+// 8. The payer's key is rotated, as make vault-payer-rotate does: a new key in the KMS,
+// the old one named alias/payer-retiring and alias/payer moved to the new one, the
+// operator role given to its account and taken from the old one, and the old one
+// emptied into the new by key rotation. A signer started before the move signs
+// nothing; started again, it signs as the new account, and the payer follows it at its
+// next step.
+func (e *e2e) rotated() error {
+	old := e.remote.Address()
+	current, err := e.kms.admin.DescribeKey(e.ctx, &kms.DescribeKeyInput{KeyId: aws.String("alias/payer")})
+	if err != nil {
+		return err
+	}
+	if _, err := e.kms.admin.CreateAlias(e.ctx, &kms.CreateAliasInput{AliasName: aws.String("alias/payer-retiring"), TargetKeyId: current.KeyMetadata.KeyId}); err != nil {
+		return err
+	}
+	made, err := e.kms.admin.CreateKey(e.ctx, &kms.CreateKeyInput{KeySpec: kmstypes.KeySpecEccSecgP256k1, KeyUsage: kmstypes.KeyUsageTypeSignVerify})
+	if err != nil {
+		return err
+	}
+	if _, err := e.kms.admin.UpdateAlias(e.ctx, &kms.UpdateAliasInput{AliasName: aws.String("alias/payer"), TargetKeyId: made.KeyMetadata.KeyId}); err != nil {
+		return err
+	}
+	if _, err := e.service.Key.SignHash(e.ctx, crypto.Keccak256Hash([]byte("after the move"))); err == nil {
+		return errors.New("a signer started before the alias moved still signs, with a key it did not start with")
+	}
+	next, err := signer.NewKMSKey(e.ctx, e.kms.signer, "alias/payer")
+	if err != nil {
+		return err
+	}
+	if next.Address() == old {
+		return errors.New("the new key has the old key's account")
+	}
+	for _, c := range []struct {
+		method string
+		who    common.Address
+	}{{"grantRole", next.Address()}, {"revokeRole", old}} {
+		data, err := e.vault.ABI.Call(c.method, vaultconf.OperatorRole, c.who)
+		if err != nil {
+			return err
+		}
+		if _, err := txsend.Send(e.ctx, e.client, e.admin, e.vault.At, nil, data); err != nil {
+			return fmt.Errorf("%s(OPERATOR_ROLE, %s): %w", c.method, c.who, err)
+		}
+	}
+	if _, err := txsend.Send(e.ctx, e.client, e.admin, next.Address(), anvil.Ether(1), nil); err != nil {
+		return err
+	}
+	// The old key, with no role now, is emptied into the new account by key rotation.
+	retiring, err := signer.NewKMSKey(e.ctx, e.kms.rotation, "alias/payer-retiring")
+	if err != nil {
+		return err
+	}
+	before, err := e.client.BalanceAt(e.ctx, next.Address(), nil)
+	if err != nil {
+		return err
+	}
+	swept, err := sweep.Sweep(e.ctx, e.client, retiring, next.Address())
+	if err != nil {
+		return err
+	}
+	after, err := e.client.BalanceAt(e.ctx, next.Address(), nil)
+	if err != nil {
+		return err
+	}
+	// What is left is the fee cap above the fee paid: under 21,000 gas at a gwei.
+	if swept.Moved.Sign() <= 0 || new(big.Int).Sub(after, before).Cmp(swept.Moved) != 0 || swept.Left.Cmp(big.NewInt(21_000*1e9)) >= 0 {
+		return fmt.Errorf("the old key emptied: moved %s, the new account got %s, %s wei left", swept.Moved, new(big.Int).Sub(after, before), swept.Left)
+	}
+	e.service.Key = next
+	if changed, err := e.remote.Refresh(e.ctx); err != nil || !changed || e.remote.Address() != next.Address() {
+		return fmt.Errorf("the payer reads the signer's account: %s, changed %t, %v; want %s", e.remote.Address(), changed, err, next.Address())
+	}
+
+	to := recipient("rotated")
+	id, err := e.submit("rotated", to, milli(200))
+	if err != nil {
+		return err
+	}
+	if rep, err := e.step(e.newPayer(e.rpc(), e.payer), "after the rotation"); err != nil {
+		return err
+	} else if rep.Signed != 1 {
+		return fmt.Errorf("after the rotation: %+v, want 1 signed", rep)
+	}
+	if err := e.onChain(id, withdrawals.Paid); err != nil {
+		return err
+	}
+	if err := e.received(to, milli(200)); err != nil {
+		return err
+	}
+	if n, err := e.client.NonceAt(e.ctx, next.Address(), nil); err != nil || n != 1 {
+		return fmt.Errorf("the new account's nonce is %d, %v; want 1, the payment", n, err)
+	}
+	call, err := e.vault.ABI.Call("hasRole", vaultconf.OperatorRole, old)
+	if err != nil {
+		return err
+	}
+	if out, err := e.client.CallContract(e.ctx, ethereum.CallMsg{To: &e.vault.At, Data: call}, nil); err != nil || new(big.Int).SetBytes(out).Sign() != 0 {
+		return fmt.Errorf("the old account still holds OPERATOR_ROLE (%x, %v)", out, err)
+	}
+	ok("the payer's key is rotated in the KMS", fmt.Sprintf("%s to %s; paid by the new key, the old one holds no role, emptied to %s wei", short(old), short(next.Address()), swept.Left))
+	return nil
+}
+
+func short(a common.Address) string { return a.Hex()[:10] }
+
+// 9. Final: settled, closed, and equal to the vault.
 func (e *e2e) final() error {
 	if err := e.balance("held while not final", anvil.Ether(8), e.paid); err != nil {
 		return err

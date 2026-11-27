@@ -166,26 +166,36 @@ type Remote struct {
 // NewRemote connects to the signer at url and reads the account it signs for.
 func NewRemote(ctx context.Context, url string, config *tls.Config) (*Remote, error) {
 	r := &Remote{url: url, client: &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{TLSClientConfig: config}}}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url+"/v1/address", nil)
-	if err != nil {
+	if _, err := r.Refresh(ctx); err != nil {
 		return nil, err
+	}
+	return r, nil
+}
+
+// Refresh reads again the account the signer signs for, which changes when the payer's
+// key is rotated, and reports whether it changed. The connection is kept between calls.
+func (r *Remote) Refresh(ctx context.Context) (bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.url+"/v1/address", nil)
+	if err != nil {
+		return false, err
 	}
 	resp, err := r.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("signer: reach %s: %w", url, err)
+		return false, fmt.Errorf("signer: reach %s: %w", r.url, err)
 	}
 	defer resp.Body.Close()
 	var body struct {
 		Address common.Address `json:"address"`
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("signer: %s/v1/address: %s", url, resp.Status)
+		return false, fmt.Errorf("signer: %s/v1/address: %s", r.url, resp.Status)
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, maxRequest)).Decode(&body); err != nil || body.Address == (common.Address{}) {
-		return nil, fmt.Errorf("signer: %s/v1/address: no address", url)
+		return false, fmt.Errorf("signer: %s/v1/address: no address", r.url)
 	}
+	changed := r.address != (common.Address{}) && r.address != body.Address
 	r.address = body.Address
-	return r, nil
+	return changed, nil
 }
 
 func (r *Remote) Address() common.Address { return r.address }

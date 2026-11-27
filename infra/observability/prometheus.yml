@@ -82,3 +82,10 @@ scrape_configs:
     static_configs:
       - targets: [withdrawal-signer:9112]
         labels: {chain: l2, role: bridge}
+
+  # The devnet's KMS of the bridge service (cmd/kms-dev), on its metrics port; its API is
+  # not scraped.
+  - job_name: kms-dev
+    static_configs:
+      - targets: [kms-dev:9113]
+        labels: {chain: l2, role: bridge}

@@ -107,14 +107,22 @@ func run(ctx context.Context, c config) error {
 	var lastCheck time.Time
 	var remote *signer.Remote
 	for {
-		// The signer may start after the payer: it is reached again until it answers.
+		// The signer may start after the payer: it is reached again until it answers. Its
+		// account is read again at each step, so a rotated key is followed: the nonces
+		// are the new account's from then on.
 		if remote == nil {
 			if remote, err = signer.NewRemote(ctx, c.signerURL, tlsConfig); err == nil {
 				log.Printf("withdrawal-payer: the signer at %s signs for %s", c.signerURL, remote.Address())
 			}
+		} else {
+			was := remote.Address()
+			var changed bool
+			if changed, err = remote.Refresh(ctx); changed {
+				log.Printf("withdrawal-payer: the signer now signs for %s, no longer for %s", remote.Address(), was)
+			}
 		}
 		var vault common.Address
-		if remote == nil {
+		if remote == nil || err != nil {
 			m.failed()
 		} else {
 			vault, err = step(ctx, m, chain, l, remote, c)

@@ -13,6 +13,7 @@ COPY internal/ledger internal/ledger
 COPY internal/deposits internal/deposits
 COPY internal/withdrawals internal/withdrawals
 COPY internal/signer internal/signer
+COPY internal/awscreds internal/awscreds
 COPY cmd/withdrawal-signer cmd/withdrawal-signer
 RUN CGO_ENABLED=0 GOTOOLCHAIN=local GOFLAGS=-mod=readonly go build -trimpath -ldflags=-s -o /out/withdrawal-signer ./cmd/withdrawal-signer
 

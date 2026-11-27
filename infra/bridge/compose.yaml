@@ -1,8 +1,10 @@
 # The bridge service of the devnet: the ledger's PostgreSQL, the deposit indexer
 # (docs/design/deposits.md), the withdrawal payer (docs/design/withdrawals.md) and the
-# withdrawal signer that holds the payer's key (docs/design/signer.md).
-# PostgreSQL is published on 127.0.0.1 only, for ledger-migrate and the checks; the
-# services' metrics ports are not published.
+# withdrawal signer that signs for it (docs/design/signer.md), with the payer's key in
+# kms-dev, the devnet's KMS (docs/design/kms-dev.md).
+# PostgreSQL is published on 127.0.0.1 only, for ledger-migrate and the checks, and
+# kms-dev's API for its admin (make vault-payer); the services' metrics ports are not
+# published.
 # Passwords are read from files in .devnet/bridge that bridge-init.sh writes once; they
 # are not in this file, an env file or docker inspect. Images are pinned by digest,
 # the indexer's base images too. scripts/lib/postgres.sh takes the PostgreSQL image for
@@ -17,6 +19,8 @@ networks:
 
 volumes:
   ledger: {}
+  # The keys of kms-dev, for it alone.
+  kms-keys: {}
 
 services:
   postgres:
@@ -96,9 +100,37 @@ services:
     volumes:
       - ../../.devnet/vault/record:/vault:ro
 
-  # Holds the payer's key, which has the vault's operator role and nothing else
-  # (cmd/vault-payer), and signs for the payer only what its policy and the ledger allow
-  # (cmd/withdrawal-signer), recording each decision in the ledger. It reaches no node
+  # The devnet's KMS (cmd/kms-dev): the part of the AWS KMS API the signer uses. The
+  # payer's key is made in it (make vault-payer) and never leaves it. Three principals
+  # reach it, each with an access key of its own: the admin, which makes and names keys;
+  # the signer, which may only read the public key of alias/payer and sign with it; and
+  # key rotation, which may do the same only with alias/payer-retiring, to move a
+  # replaced key's funds to the new one. Its keys are in a volume of its own.
+  kms-dev:
+    build:
+      context: ../..
+      dockerfile: infra/images/kms-dev/Dockerfile
+    restart: unless-stopped
+    secrets:
+      - kms_admin
+      - kms_signer
+      - kms_rotation
+    command:
+      - -listen=:4599
+      - -metrics=:9113
+      - -dir=/data
+      - -admin-credentials=/run/secrets/kms_admin
+      - -signer-credentials=/run/secrets/kms_signer
+      - -rotation-credentials=/run/secrets/kms_rotation
+    ports:
+      - 127.0.0.1:14599:4599
+    volumes:
+      - kms-keys:/data
+
+  # Signs for the payer only what its policy and the ledger allow
+  # (cmd/withdrawal-signer), with the payer's key in kms-dev, which has the vault's
+  # operator role and nothing else (cmd/vault-payer), and records each decision in the
+  # ledger. It signs only as the payer the deployment record names. It reaches no node
   # and is on the bridge's network only; its API needs a client certificate from its CA.
   # It connects as a login that holds only withdrawal_signer.
   withdrawal-signer:
@@ -109,9 +141,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      kms-dev:
+        condition: service_started
     secrets:
       - signer_db
-      - signing_key
+      - kms_signer
       - {source: tls_ca, target: ca.pem}
       - {source: signer_cert, target: signer.pem}
       - {source: signer_tls_key, target: signer-key.pem}
@@ -119,7 +153,9 @@ services:
       - -record=/vault/deployment.json
       - -db=postgres://signer@postgres:5432/ledger?sslmode=disable
       - -db-password-file=/run/secrets/signer_db
-      - -key-file=/run/secrets/signing_key
+      - -kms-endpoint=http://kms-dev:4599
+      - -kms-key=alias/payer
+      - -kms-credentials=/run/secrets/kms_signer
       - -tls=/run/secrets
       - -listen=:9443
       - -metrics=:9112
@@ -135,8 +171,12 @@ secrets:
     file: ../../.devnet/bridge/payer.txt
   signer_db:
     file: ../../.devnet/bridge/signer.txt
-  signing_key:
-    file: ../../.devnet/bridge/signing-key.txt
+  kms_admin:
+    file: ../../.devnet/bridge/kms-admin.txt
+  kms_signer:
+    file: ../../.devnet/bridge/kms-signer.txt
+  kms_rotation:
+    file: ../../.devnet/bridge/kms-rotation.txt
   tls_ca:
     file: ../../.devnet/bridge/tls/ca.pem
   payer_cert:

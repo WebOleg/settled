@@ -1,10 +1,12 @@
-// Command withdrawal-signer is the only holder of the payer's key (internal/signer). It
-// signs for the withdrawal payer, over TLS with client certificates, only what its
-// policy and the ledger allow, and records every decision in the ledger's signer_log
-// before it answers. It reads the vault and its chain from the deployment record and
-// the ledger as a login that holds only withdrawal_signer; it reaches no node. It
-// serves Prometheus metrics on a port of its own. The key and the password come from
-// files and are never printed.
+// Command withdrawal-signer signs for the withdrawal payer (internal/signer), over TLS
+// with client certificates, only what its policy and the ledger allow, and records every
+// decision in the ledger's signer_log before it answers. The key it signs with stays in
+// a KMS that speaks the AWS KMS API, reached with the AWS SDK as a principal that may
+// only read its public key and sign with it: AWS KMS in production, kms-dev on the
+// devnet. A key in a file (-key-file) is for runs without a KMS. It reads the vault and
+// its chain from the deployment record and the ledger as a login that holds only
+// withdrawal_signer; it reaches no node. It serves Prometheus metrics on a port of its
+// own. Credentials and the password come from files and are never printed.
 package main
 
 import (
@@ -21,9 +23,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/WebOleg/settled/internal/awscreds"
 	"github.com/WebOleg/settled/internal/ledger"
 	"github.com/WebOleg/settled/internal/signer"
 	"github.com/WebOleg/settled/internal/vaultwatch"
@@ -31,6 +37,7 @@ import (
 
 type config struct {
 	record, db, passwordFile, keyFile, tlsDir, listen, metrics string
+	kmsEndpoint, kmsRegion, kmsKey, kmsCredentials             string
 	maxGas                                                     uint64
 	maxFeeCap, limit                                           *big.Int
 	window                                                     time.Duration
@@ -41,7 +48,11 @@ func main() {
 	flag.StringVar(&c.record, "record", "/vault/deployment.json", "the vault's deployment record")
 	flag.StringVar(&c.db, "db", "postgres://signer@postgres:5432/ledger?sslmode=disable", "the ledger database, without the password")
 	flag.StringVar(&c.passwordFile, "db-password-file", "/run/secrets/signer_db", "file holding the database password")
-	flag.StringVar(&c.keyFile, "key-file", "/run/secrets/signing_key", "file holding the payer's private key, hex")
+	flag.StringVar(&c.keyFile, "key-file", "", "file holding the payer's private key, hex, when there is no KMS")
+	flag.StringVar(&c.kmsEndpoint, "kms-endpoint", "", "the KMS's endpoint; empty for AWS KMS itself in -kms-region")
+	flag.StringVar(&c.kmsRegion, "kms-region", "eu-central-1", "the KMS's region")
+	flag.StringVar(&c.kmsKey, "kms-key", "alias/payer", "the key in the KMS, by id, ARN or alias")
+	flag.StringVar(&c.kmsCredentials, "kms-credentials", "/run/secrets/kms_signer", "file holding the signer's access key id and secret for the KMS")
 	flag.StringVar(&c.tlsDir, "tls", "/run/secrets", "folder holding ca.pem, signer.pem and signer-key.pem")
 	flag.StringVar(&c.listen, "listen", ":9443", "address to serve the signing API on, over TLS")
 	flag.StringVar(&c.metrics, "metrics", ":9112", "address to serve /metrics on")
@@ -60,8 +71,35 @@ func main() {
 	}
 }
 
+// key is the signer's key: in the KMS, or with -key-file, in a file.
+func key(ctx context.Context, c config) (signer.Key, error) {
+	if c.keyFile != "" {
+		return signer.ReadFileKey(c.keyFile)
+	}
+	id, secret, err := awscreds.Read(c.kmsCredentials)
+	if err != nil {
+		return nil, err
+	}
+	opts := kms.Options{Region: c.kmsRegion, Credentials: credentials.NewStaticCredentialsProvider(id, secret, "")}
+	if c.kmsEndpoint != "" {
+		opts.BaseEndpoint = aws.String(c.kmsEndpoint)
+	}
+	// The KMS may start after the signer: it is asked again until it answers.
+	for i := 0; ; i++ {
+		k, err := signer.NewKMSKey(ctx, kms.New(opts), c.kmsKey)
+		if err == nil || i == 30 {
+			return k, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
 func run(ctx context.Context, c config) error {
-	key, err := signer.ReadFileKey(c.keyFile)
+	key, err := key(ctx, c)
 	if err != nil {
 		return err
 	}
@@ -78,9 +116,9 @@ func run(ctx context.Context, c config) error {
 	if err != nil {
 		return err
 	}
-	// The vault and its chain, from the deployment record: until there is one, nothing
-	// can be signed and the signer waits.
-	rec, err := waitRecord(ctx, c.record)
+	// The vault and its chain, from the deployment record: until it names this key as the
+	// payer's, nothing can be signed and the signer waits.
+	rec, err := waitRecord(ctx, c.record, key.Address())
 	if err != nil {
 		return err
 	}
@@ -117,14 +155,29 @@ func run(ctx context.Context, c config) error {
 	}
 }
 
-func waitRecord(ctx context.Context, path string) (vaultwatch.Record, error) {
+// waitRecord waits for a deployment record that names as the payer's the account the
+// signer's key controls: the signer signs for no other.
+func waitRecord(ctx context.Context, path string, as common.Address) (vaultwatch.Record, error) {
+	said := ""
 	for {
 		rec, ok, err := vaultwatch.ReadRecord(path)
 		if err != nil {
 			return rec, err
 		}
-		if ok {
+		why := "no vault is deployed yet"
+		switch {
+		case ok && rec.Payer == nil:
+			why = "the vault has given no payer the operator role yet (make vault-payer)"
+		case ok && !common.IsHexAddress(rec.Payer.Address):
+			return rec, fmt.Errorf("the deployment record names the payer %q, not an address", rec.Payer.Address)
+		case ok && common.HexToAddress(rec.Payer.Address) != as:
+			why = fmt.Sprintf("the vault's payer is %s, not this key's account %s (make vault-payer)", rec.Payer.Address, as)
+		case ok:
 			return rec, nil
+		}
+		if why != said {
+			log.Printf("withdrawal-signer: waiting: %s", why)
+			said = why
 		}
 		select {
 		case <-ctx.Done():

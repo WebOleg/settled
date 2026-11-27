@@ -1003,7 +1003,7 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 5,
+        "w": 4,
         "x": 0,
         "y": 19
       },
@@ -1069,8 +1069,8 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 5,
-        "x": 5,
+        "w": 4,
+        "x": 4,
         "y": 19
       },
       "targets": [
@@ -1135,8 +1135,8 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 5,
-        "x": 10,
+        "w": 4,
+        "x": 8,
         "y": 19
       },
       "targets": [
@@ -1201,8 +1201,8 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 5,
-        "x": 15,
+        "w": 4,
+        "x": 12,
         "y": 19
       },
       "targets": [
@@ -1221,6 +1221,72 @@
       "fieldConfig": {
         "defaults": {
           "unit": "suffix: refused",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 44,
+      "title": "KMS denies nothing",
+      "description": "Green: the KMS denied no call in the last 10 minutes. Red: a caller that is not who it says, or asking what its policy does not allow, was denied; the value is how many. If red, see the runbook KMSDenied.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 16,
+        "y": 19
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(increase(kms_denied_total{chain=\"l2\"}[10m]))",
+          "legendFormat": "KMS denies nothing",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: denied",
           "decimals": 0,
           "thresholds": {
             "mode": "absolute",

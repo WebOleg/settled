@@ -142,10 +142,10 @@ for gas. Its image ([Dockerfile](../../infra/images/withdrawal-payer/Dockerfile)
 built like the indexer's: pinned bases, no shell, an unprivileged user.
 
 On the devnet it runs in the bridge service ([compose.yaml](../../infra/bridge/compose.yaml))
-next to the signer, which holds a key of the payer's own: it has the vault's operator
-role and nothing else, granted through the timelock
-([cmd/vault-payer](../../cmd/vault-payer/main.go)); the operator key `make vault-check`
-uses is another, so the two never share nonces. The payer sends to the sequencer and
+next to the signer, which signs with a key of the payer's own, in kms-dev
+([kms-dev](kms-dev.md)): it has the vault's operator role and nothing else, granted
+through the timelock ([cmd/vault-payer](../../cmd/vault-payer/main.go)); the
+operator key `make vault-check` uses is another, so the two never share nonces. The payer sends to the sequencer and
 connects as a login that holds only `withdrawal_payer`. Three alerts watch
 it: WithdrawalPayerStale, WithdrawalsWaiting and PayerFundsLow
 ([runbooks](../runbooks.md#withdrawalpayerstale)). `make withdrawal-check`
@@ -202,4 +202,4 @@ transfer it made.
 | Limit | Why it is accepted here |
 |---|---|
 | A payment in suspense is resolved whole, to one account. | A payment that is part a customer's and part a loss is rare; resolving in parts is not built, and such a payment stays in suspense, visible and alerted on, until it is. |
-| The payer's key is a file, read by the signer's container only. | The signer signs only what the ledger holds within its limits, and the key holds only the operator role, so at most the rate limit leaves at once and large amounts wait in the queue for the guardian. A KMS or HSM is the other implementation of the signer's key ([signer](signer.md#known-limits)). |
+| The payer's key is in kms-dev, not AWS KMS. | The signer reaches both with the same SDK client; it signs only what the ledger holds within its limits, and the key holds only the operator role, so at most the rate limit leaves at once and large amounts wait in the queue for the guardian ([kms-dev](kms-dev.md#known-limits)). |

@@ -3,6 +3,10 @@ module github.com/WebOleg/settled
 go 1.26
 
 require (
+	github.com/aws/aws-sdk-go-v2 v1.48.1
+	github.com/aws/aws-sdk-go-v2/credentials v1.21.4
+	github.com/aws/aws-sdk-go-v2/service/kms v1.63.1
+	github.com/aws/smithy-go v1.28.10
 	github.com/ethereum/go-ethereum v1.17.10
 	github.com/holiman/uint256 v1.3.2
 	github.com/jackc/pgx/v5 v5.13.0
@@ -12,6 +16,8 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20251001021608-1fe7b43fc4d6 // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.13 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.13 // indirect
 	github.com/bits-and-blooms/bitset v1.20.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/consensys/gnark-crypto v0.18.1 // indirect

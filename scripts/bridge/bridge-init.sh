@@ -2,10 +2,12 @@
 # Creates the bridge's passwords once, in .devnet/bridge: the PostgreSQL admin's, the
 # deposit indexer's, the withdrawal payer's and signer's, the requester's
 # (withdrawal-check), the auditor's (bridge-check) and those of the two operators who
-# resolve suspense under four eyes (ops_a, ops_b). The folder is readable by its owner
-# only (700). The files are 644, because PostgreSQL and the services read them as their
-# own users inside their containers; the folder keeps everyone else on this machine
-# out. Never prints a password. With --reset, deletes the folder.
+# resolve suspense under four eyes (ops_a, ops_b); and the access keys of kms-dev's
+# three principals, its admin's and key rotation's (make vault-payer) and the withdrawal
+# signer's, each an access key id and a secret, one per line. The folder is readable by
+# its owner only (700). The files are 644, because PostgreSQL and the services read them
+# as their own users inside their containers; the folder keeps everyone else on this
+# machine out. Never prints a password or a secret. With --reset, deletes the folder.
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
@@ -29,6 +31,15 @@ for name in postgres-admin indexer payer signer requester auditor ops-a ops-b; d
     (umask 077 && openssl rand -hex 24 > "$file")
     chmod 644 "$file"
     echo "bridge-init: created the $name password"
+  fi
+  [ "$(mode "$file")" = "644" ] || { echo "bridge-init: $file has mode $(mode "$file"), want 644"; exit 1; }
+done
+for name in kms-admin kms-signer kms-rotation; do
+  file="$dir/$name.txt"
+  if [ ! -f "$file" ]; then
+    (umask 077 && printf 'AKIA%s\n%s\n' "$(openssl rand -hex 8 | tr 'a-f' 'A-F')" "$(openssl rand -base64 30)" > "$file")
+    chmod 644 "$file"
+    echo "bridge-init: created the $name access key"
   fi
   [ "$(mode "$file")" = "644" ] || { echo "bridge-init: $file has mode $(mode "$file"), want 644"; exit 1; }
 done

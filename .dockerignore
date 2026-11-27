@@ -1,7 +1,8 @@
 # The images built with the repository root as their context are the vault exporter's
 # (infra/images/vault-exporter), the deposit indexer's (infra/images/deposit-indexer),
-# the withdrawal payer's (infra/images/withdrawal-payer) and the withdrawal signer's
-# (infra/images/withdrawal-signer): their sources go in, nothing else. Chain data, keys
+# the withdrawal payer's (infra/images/withdrawal-payer), the withdrawal signer's
+# (infra/images/withdrawal-signer) and kms-dev's (infra/images/kms-dev): their sources
+# go in, nothing else. Chain data, keys
 # and passwords in .devnet, contract builds and libraries never reach a build.
 *
 !go.mod
@@ -10,9 +11,12 @@
 !cmd/deposit-indexer
 !cmd/withdrawal-payer
 !cmd/withdrawal-signer
+!cmd/kms-dev
 !internal/vaultwatch
 !internal/ledger
 !internal/deposits
 !internal/suspense
 !internal/withdrawals
 !internal/signer
+!internal/kmsdev
+!internal/awscreds

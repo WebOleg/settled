@@ -1,13 +1,13 @@
 # Design: the withdrawal signer
 
 The payer decides what to pay; it does not hold the key that pays. The key that holds
-the vault's operator role lives in the withdrawal signer
+the vault's operator role is in a KMS, and only the withdrawal signer
 ([internal/signer](../../internal/signer/signer.go),
-[cmd/withdrawal-signer](../../cmd/withdrawal-signer/main.go)), which signs for the payer
-only what its policy and the ledger allow, the way a custodian's policy engine stands
-between a hot wallet and its key. A payer, a host or a database row that is not what it
-should be can then ask for anything, and get nothing signed that the ledger does not
-hold.
+[cmd/withdrawal-signer](../../cmd/withdrawal-signer/main.go)) may sign with it, for the
+payer and only what its policy and the ledger allow, the way a custodian's policy
+engine stands between a hot wallet and its key. A payer, a host or a database row that
+is not what it should be can then ask for anything, and get nothing signed that the
+ledger does not hold.
 
 ## What it signs
 
@@ -50,19 +50,28 @@ signs for, and sign. On the devnet the CA and both certificates are made by
 owner reads, again before they end; in production they come from the organisation's
 PKI.
 
-The payer checks what comes back: the same chain, nonce, fees, gas, destination, value
-and data it asked for, signed for the operator's account. A refusal is waited out: the
+The payer reads the account the signer signs for at each step, so a rotated key is
+followed with its own nonces. It checks what comes back: the same chain, nonce, fees,
+gas, destination, value and data it asked for, signed for that account. A refusal is waited out: the
 payer records why in the withdrawal's `last_error`, takes no nonce, and asks again at
 its next step.
 
 ## The key
 
 The signer reaches the key through two calls, its address and the signature of a hash
-(`signer.Key`). On the devnet the key is a file read by the signer's container only, as
-a Docker secret; the payer's container has none. A key in an HSM or a KMS, which never
-leaves it, goes behind the same two calls: AWS KMS, for one, holds secp256k1 keys
-(`ECC_SECG_P256K1`), signs a digest with `ECDSA_SHA_256` and returns the public key,
-from which the account is derived.
+(`signer.Key`). The key is in a KMS that speaks the AWS KMS API, and never leaves it
+(`signer.KMSKey`, [kms.go](../../internal/signer/kms.go)): an `ECC_SECG_P256K1` key for
+`SIGN_VERIFY`, reached with the AWS SDK for Go as a principal that may only read the
+public key of `alias/payer` and sign a digest with it. The account is derived from the
+public key; the KMS's DER signature becomes Ethereum's r, s and v, with s in the lower
+half of the curve's order. In production the KMS is AWS KMS; on the devnet it is
+kms-dev ([kms-dev](kms-dev.md)), with the same client and its own endpoint and
+credentials. Neither the payer's container nor the signer's holds a key. With
+`-key-file`, a key in a file takes its place, for runs without a KMS.
+
+The signer signs only as the payer the deployment record names: it starts once the
+record names its key's account, which `make vault-payer` writes when that account holds
+the operator role.
 
 ## Shown by
 
@@ -74,7 +83,8 @@ from which the account is derived.
 | G4 At once | Ten requests at once under a limit for six: six signed. | `TestSign_signersAtOnceSpendTheLimitOnce` |
 | G5 The record | `signer_log` is append-only, for its owner too; the signer can change nothing else. | `TestSignerLog_isAppendOnlyAndTheSignerChangesNothingElse` |
 | G6 Only the payer | Over HTTPS, the payer's certificate signs; another name from the same CA is refused and recorded; no certificate, no TLS. | `TestHandler_onlyTheAllowedClientSigns` |
-| G7 End to end | On anvil every transaction of the payer is signed by the signer over TLS and recorded; another recipient, amount, id, contract and a plain transfer are refused; a payer the velocity limit refuses waits and takes no nonce. | `make check-bridge` ([cmd/payer-e2e](../../cmd/payer-e2e/main.go)) |
+| G7 End to end | On anvil every transaction of the payer is signed by the signer over TLS, with the operator's key in kms-dev, and recorded; another recipient, amount, id, contract and a plain transfer are refused; a payer the velocity limit refuses waits and takes no nonce. | `make check-bridge` ([cmd/payer-e2e](../../cmd/payer-e2e/main.go)) |
+| G8 Only a secp256k1 signing key | A KMS key of another spec or usage, or a signature from another key, is refused. | `TestKMSAnswers_anythingButASecp256k1KeyAndItsSignatureIsRefused` |
 
 The payer's side is shown in [withdrawals](withdrawals.md): a refusal is waited out and
 takes no nonce, and a transaction other than the one asked for is not recorded.
@@ -83,5 +93,5 @@ takes no nonce, and a transaction other than the one asked for is not recorded.
 
 | Limit | Why it is accepted here |
 |---|---|
-| The key is a file in the signer's container. | Only the signer reads it, and it signs only what the ledger holds. A KMS or HSM backend is the other implementation of `signer.Key`; it is not built, because no KMS runs on this machine without an account: LocalStack's KMS signs with secp256k1 keys, and since March 2026 its image needs an auth token. |
+| The signer has not run against AWS KMS itself. | That needs an AWS account; on the devnet it runs against kms-dev with the same SDK client ([kms-dev](kms-dev.md#known-limits)). |
 | One signer serves the key; a second would share the database and the lock. | The lock and the record already allow several; the devnet runs one. |

@@ -145,19 +145,31 @@ func run(ctx context.Context, rpcURL, outDir string) (int, int, error) {
 	v.number("admin handover delay", d.Vault, "defaultAdminDelay()", vaultconf.AdminDelay)
 	v.role("operator holds OPERATOR_ROLE", d.Vault, vaultconf.OperatorRole, roles[vaultconf.Operator], true)
 	v.role("guardian holds GUARDIAN_ROLE", d.Vault, vaultconf.GuardianRole, roles[vaultconf.Guardian], true)
-	v.role("payer holds OPERATOR_ROLE (make vault-payer)", d.Vault, vaultconf.OperatorRole, roles[vaultconf.Payer], true)
-	for _, r := range []struct {
-		role rolekeys.Role
-		name string
-	}{{vaultconf.Operator, "operator"}, {vaultconf.Payer, "payer"}, {vaultconf.Guardian, "guardian"}, {vaultconf.Deployer, "deployer"}, {vaultconf.TimelockProposer, "timelock proposer"}, {vaultconf.TimelockCanceller, "timelock canceller"}} {
+	// The withdrawal payer's key is in the KMS; the record names its account, and the keys
+	// it replaced.
+	var named error
+	if d.Payer == nil {
+		named = errors.New("the record names no payer (make vault-payer)")
+	}
+	v.report("the record names the payer, its key in the KMS", named, payerName(d))
+	held := []holder{{"operator", roles[vaultconf.Operator]}, {"guardian", roles[vaultconf.Guardian]}, {"deployer", roles[vaultconf.Deployer]},
+		{"timelock proposer", roles[vaultconf.TimelockProposer]}, {"timelock canceller", roles[vaultconf.TimelockCanceller]}}
+	if d.Payer != nil {
+		v.role("payer holds OPERATOR_ROLE", d.Vault, vaultconf.OperatorRole, d.Payer.Address, true)
+		held = append(held, holder{"payer", d.Payer.Address})
+		for _, f := range d.Payer.Former {
+			held = append(held, holder{"former payer " + f.Hex(), f})
+		}
+	}
+	for _, r := range held {
 		for _, h := range []struct {
 			hash common.Hash
 			name string
 		}{{vaultconf.OperatorRole, "OPERATOR_ROLE"}, {vaultconf.GuardianRole, "GUARDIAN_ROLE"}, {vaultconf.AdminRole, "DEFAULT_ADMIN_ROLE"}} {
-			if ((r.role == vaultconf.Operator || r.role == vaultconf.Payer) && h.name == "OPERATOR_ROLE") || (r.role == vaultconf.Guardian && h.name == "GUARDIAN_ROLE") {
+			if ((r.name == "operator" || r.name == "payer") && h.name == "OPERATOR_ROLE") || (r.name == "guardian" && h.name == "GUARDIAN_ROLE") {
 				continue
 			}
-			v.role(fmt.Sprintf("%s lacks %s on the vault", r.name, h.name), d.Vault, h.hash, roles[r.role], false)
+			v.role(fmt.Sprintf("%s lacks %s on the vault", r.name, h.name), d.Vault, h.hash, r.at, false)
 		}
 	}
 
@@ -432,4 +444,17 @@ func equal[T comparable](got, want T) error {
 		return fmt.Errorf("%v, want %v", got, want)
 	}
 	return nil
+}
+
+// holder is an account whose roles on the vault are checked.
+type holder struct {
+	name string
+	at   common.Address
+}
+
+func payerName(d *vaultconf.Deployment) string {
+	if d.Payer == nil {
+		return "none"
+	}
+	return fmt.Sprintf("%s, key %s, %d former", d.Payer.Address, d.Payer.KMSKey, len(d.Payer.Former))
 }

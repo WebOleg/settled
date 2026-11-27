@@ -44,6 +44,10 @@ type Record struct {
 	ChainID uint64 `json:"chainId"`
 	Vault   string `json:"vault"`
 	Block   uint64 `json:"block"`
+	// Payer is the withdrawal payer's key, once the vault gives it the operator role.
+	Payer *struct {
+		Address string `json:"address"`
+	} `json:"payer,omitempty"`
 }
 
 // ReadRecord reads the deployment record at path. A missing file is no error: there is

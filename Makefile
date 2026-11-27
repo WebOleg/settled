@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts check-bridge contracts-snapshot contracts-slither-record l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-upgrade vault-timelock-move vault-payer vault-check vault-reset bridge-up bridge-check suspense-list withdrawal-check deposit-check bridge-drill bridge-logs bridge-down bridge-reset l2-logs l2-down l2-reset
+.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts check-bridge contracts-snapshot contracts-slither-record l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-upgrade vault-timelock-move vault-payer vault-payer-rotate vault-check vault-reset bridge-up bridge-check suspense-list withdrawal-check deposit-check bridge-drill bridge-logs bridge-down bridge-reset l2-logs l2-down l2-reset
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
@@ -167,8 +167,13 @@ vault-upgrade: ## Upgrade the vault to the code the repository builds, through t
 vault-timelock-move: ## Move the vault's admin to a new timelock whose canceller is a separate key, through both delays
 	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/contracts/vault-timelock-move.sh
 
-vault-payer: ## Give the withdrawal payer its own key with the vault's operator role, through the timelock; vault-deploy does it too
+vault-payer: ## Give the withdrawal payer its key in kms-dev with the vault's operator role, through the timelock; bridge-up and vault-deploy do it too
 	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/contracts/vault-payer.sh
+
+vault-payer-rotate: ## Replace the payer's key: a new one in kms-dev gets the operator role, the old one loses it; the signer starts again on it
+	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/contracts/vault-payer.sh -rotate
+	@$(BRIDGE) restart withdrawal-signer
+	@echo "vault-payer-rotate: ok"
 
 vault-check: ## Run the vault's rules on the L2 with real transactions and account for every wei
 	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/contracts/vault-check.sh
@@ -176,17 +181,17 @@ vault-check: ## Run the vault's rules on the L2 with real transactions and accou
 vault-reset: ## Forget the vault deployment and keep its keys, for a new L2
 	@scripts/contracts/vault-deploy.sh --reset
 
-bridge-up: ## Start the ledger's PostgreSQL, migrate it, and start the deposit indexer, the withdrawal signer and payer; needs l2-up
+bridge-up: ## Start the ledger's PostgreSQL and kms-dev, migrate the ledger, give the payer its key in kms-dev, start the indexer, signer and payer; needs l2-up
 	@scripts/bridge/bridge-init.sh
-	@go run ./cmd/vault-payer -secret-only
 	@go run ./cmd/signer-tls
-	@$(BRIDGE) up -d --quiet-pull --wait postgres
+	@$(BRIDGE) up -d --quiet-pull --build --wait postgres kms-dev
 	@go run ./cmd/ledger-migrate -db 'postgres://admin@127.0.0.1:15432/ledger?sslmode=disable' \
 		-db-password-file .devnet/bridge/postgres-admin.txt \
 		-login indexer:deposit_indexer:.devnet/bridge/indexer.txt -login auditor:ledger_reader:.devnet/bridge/auditor.txt \
 		-login ops_a:suspense_operator:.devnet/bridge/ops-a.txt -login ops_b:suspense_operator:.devnet/bridge/ops-b.txt \
 		-login payer:withdrawal_payer:.devnet/bridge/payer.txt -login requester:withdrawal_requester:.devnet/bridge/requester.txt \
 		-login signer:withdrawal_signer:.devnet/bridge/signer.txt
+	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/contracts/vault-payer.sh
 	@$(BRIDGE) up -d --quiet-pull --build --remove-orphans deposit-indexer withdrawal-signer withdrawal-payer
 	@echo "bridge-up: ok"
 
@@ -212,7 +217,7 @@ bridge-logs: ## Follow the logs of the deposit indexer, the withdrawal signer an
 bridge-down: ## Stop the deposit indexer, the withdrawal signer and payer, and the ledger's PostgreSQL; keep the ledger
 	@$(BRIDGE) down
 
-bridge-reset: ## Stop the bridge and delete the ledger; its passwords are made again at the next bridge-up
+bridge-reset: ## Stop the bridge and delete the ledger and kms-dev's keys; passwords, access keys and the payer's key are made again at the next bridge-up
 	@$(BRIDGE) down --volumes
 	@scripts/bridge/bridge-init.sh --reset
 

@@ -118,12 +118,16 @@ taken over directly.
    so no one can initialize it in between. Its admin is the timelock.
 4. The first rule, the ETH configuration, proposed to the timelock and executed after
    the delay: from the first change on, the rules change the way they always will.
-5. The withdrawal payer's own key is granted the operator role the same way, through
-   the timelock ([cmd/vault-payer](../../cmd/vault-payer/main.go), also
-   `make vault-payer`), and topped up with ETH for gas.
+5. The withdrawal payer's own key, made in kms-dev and never out of it
+   ([kms-dev](kms-dev.md)), is granted the operator role the same way, through the
+   timelock ([cmd/vault-payer](../../cmd/vault-payer/main.go), also `make vault-payer`),
+   and topped up with ETH for gas. A key it held before loses the role the same way,
+   once the new one holds it, and is then emptied into the new account; the record
+   names the payer's account and the keys it replaced, and `make vault-verify` checks
+   that each of those holds no role.
 
-The six keys (deployer, operator, guardian, timelock proposer, timelock canceller,
-payer) are created once in
+The five other keys (deployer, operator, guardian, timelock proposer, timelock
+canceller) are created once in
 `.devnet/vault/keys`, readable by the owner only, and the deployer holds no role when it
 is done. Addresses and the L2 they belong to are recorded in
 `.devnet/vault/record/deployment.json`; a second run on the same L2 changes nothing, and a

@@ -190,6 +190,16 @@ groups:
           summary: The withdrawal signer refused to sign in the last 10 minutes; something asked for a transaction its policy or the ledger does not allow.
           runbook: docs/runbooks.md#signerrefused
 
+      - alert: KMSDenied
+        expr: max(increase(kms_denied_total{chain="l2"}[10m])) >= 1
+        for: 0s
+        labels:
+          severity: page
+          tile: KMS denies nothing
+        annotations:
+          summary: The KMS denied a call in the last 10 minutes; a caller that is not who it says, or asking what its policy does not allow, reached the payer's key.
+          runbook: docs/runbooks.md#kmsdenied
+
       - alert: SuspenseUnresolved
         expr: max(ledger_suspense_oldest_seconds{chain="l2"}) >= 86400
         for: 0s

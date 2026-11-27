@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Gives the withdrawal payer its own key with the vault's operator role, through the
-# timelock (cmd/vault-payer), after building the contracts, so the ABI is the one of the
-# code in the repository. Hands the devnet mnemonic over without printing it.
+# Gives the withdrawal payer its key in kms-dev with the vault's operator role, through
+# the timelock (cmd/vault-payer), after building the contracts, so the ABI is the one of
+# the code in the repository; with -rotate, replaces the key. Hands the devnet mnemonic
+# over without printing it.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"

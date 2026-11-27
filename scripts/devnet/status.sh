@@ -25,7 +25,7 @@ num() { if [ -n "$1" ] && [ "$1" != "null" ]; then printf '%d' "$1"; else echo "
 
 echo "Services"
 for pair in "l1:geth" "l1:beacon" "l1:validator" "l2:op-reth" "l2:op-node" "l2:op-batcher" \
-  "l2:verifier-op-reth" "l2:verifier-op-node" "l2:op-proposer" "bridge:postgres" "bridge:deposit-indexer" "bridge:withdrawal-signer" "bridge:withdrawal-payer"; do
+  "l2:verifier-op-reth" "l2:verifier-op-node" "l2:op-proposer" "bridge:postgres" "bridge:deposit-indexer" "bridge:kms-dev" "bridge:withdrawal-signer" "bridge:withdrawal-payer"; do
   layer="${pair%%:*}"; svc="${pair#*:}"
   case "$layer" in l1) compose="$L1" ;; l2) compose="$L2" ;; *) compose="$BRIDGE" ;; esac
   state="$($compose ps -a --format '{{.State}}' "$svc" 2>/dev/null | head -1)"

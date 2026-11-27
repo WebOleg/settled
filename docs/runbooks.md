@@ -293,7 +293,8 @@ Do:
 - Top it up: `make vault-payer` tops it up to 0.05 ETH from the devnet user. In
   production a treasury key funds it, within a limit.
 - A fall that is not the payer's own transactions means the key is used elsewhere:
-  revoke its role through the timelock and pause the vault.
+  pause the vault, then `make vault-payer-rotate`, which takes the role from the key
+  through the timelock once a new one holds it; see KMSDenied.
 
 ## SignerRefused
 
@@ -319,6 +320,35 @@ Do:
   hold whatever is signed; pause it if anything was signed that should not have been.
 - `fee cap` or `gas`: the network asks more than the signer allows; see
   WithdrawalsWaiting.
+
+## KMSDenied
+
+The KMS denied a call at least once in the last 10 minutes: a caller that is not who it
+says (an unknown access key, a wrong or stale signature), or a principal asking what its
+policy does not allow, such as the signer asking for another key or the admin asking to
+sign. Nothing was signed. The services never ask for that, so someone has an access key,
+or something calls the KMS that should not.
+
+Look at:
+- `kms_requests_total{outcome="denied"}` by operation and principal (`admin`,
+  `withdrawal-signer`, `key-rotation`): an empty principal is an unknown or forged
+  caller, a named one a principal outside its policy.
+- `docker compose -f infra/bridge/compose.yaml logs kms-dev` and `make bridge-logs`
+  around that time.
+
+Do:
+- A named principal: treat its access key as exposed and make a new one. Delete its
+  file in `.devnet/bridge` (`kms-admin.txt`, `kms-signer.txt` or `kms-rotation.txt`), run
+  `scripts/bridge/bridge-init.sh`, which makes a new one, then
+  `docker compose -f infra/bridge/compose.yaml up -d --force-recreate kms-dev withdrawal-signer`:
+  a container keeps the file it started with until it is made again. In production,
+  rotate the IAM access key.
+- An unknown caller with the signer's or the admin's access key id: the same, for that
+  key.
+- If the payer's key itself may have been used, pause the vault and run
+  `make vault-payer-rotate`: a new key in the KMS gets the operator role, the old one
+  loses it and is emptied into the new account, and the signer starts again on the new
+  one. Withdrawals wait for the two timelock delays, and are then paid as before.
 
 ## SuspenseUnresolved
 

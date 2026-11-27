@@ -38,14 +38,15 @@ const (
 	// TimelockCanceller can only cancel what the proposer scheduled, so a stolen
 	// proposer key is answered within the delay.
 	TimelockCanceller rolekeys.Role = "timelock-canceller"
-	// Payer is the withdrawal payer's own key (cmd/withdrawal-payer): it holds the
-	// operator role and nothing else, granted through the timelock (cmd/vault-payer), so
-	// the service and the operator's checks never share a key or its nonces.
-	Payer rolekeys.Role = "payer"
+	// FormerPayer is the key the withdrawal payer held in a file before its key moved to
+	// the KMS (Payer). It is no longer made; where it exists, cmd/vault-payer takes its
+	// role away and moves its ETH to the payer's key in the KMS.
+	FormerPayer rolekeys.Role = "payer"
 )
 
-// Roles lists the keys of the vault.
-var Roles = []rolekeys.Role{Deployer, Operator, Guardian, TimelockProposer, TimelockCanceller, Payer}
+// Roles lists the keys of the vault kept in files. The withdrawal payer's is in the
+// KMS, and the record names it (Deployment.Payer).
+var Roles = []rolekeys.Role{Deployer, Operator, Guardian, TimelockProposer, TimelockCanceller}
 
 // Devnet parameters. Production keeps the same structure with longer delays (days for
 // the timelock and the admin handover, hours for the queue) and limits set from the
@@ -127,6 +128,21 @@ type Deployment struct {
 	// NextTimelock is the timelock the vault's admin is moving to, while the move is in
 	// progress (cmd/vault-timelock-move); nil otherwise.
 	NextTimelock *common.Address `json:"nextTimelock,omitempty"`
+	// Payer is the withdrawal payer's key, once it holds the operator role
+	// (cmd/vault-payer); nil before.
+	Payer *Payer `json:"payer,omitempty"`
+}
+
+// Payer is the withdrawal payer's key: in the KMS, where it was made and which it never
+// leaves. It holds the vault's operator role and nothing else, so the payer and the
+// operator's checks never share a key or its nonces. The withdrawal signer signs only as
+// the account named here.
+type Payer struct {
+	Address common.Address `json:"address"`
+	// KMSKey is the key's id in the KMS; alias/payer names it.
+	KMSKey string `json:"kmsKey"`
+	// Former are the payers' keys it replaced, each with no role left on the vault.
+	Former []common.Address `json:"former,omitempty"`
 }
 
 // ReadDeployment reads RecordDir/deployment.json from root. It wraps fs.ErrNotExist when there
