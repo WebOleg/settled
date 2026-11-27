@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"sync"
 	"testing"
 
@@ -644,7 +645,7 @@ func TestStep_aStreamAddedLaterIsBackfilledOnce(t *testing.T) {
 	f.chain.mine()                                                                                                  // 10
 	f.chain.finalize(7)
 	old := f.indexer()
-	old.Streams = []string{StreamDeposits}
+	old.only = []string{StreamDeposits}
 	if rep, err := old.Step(ctx); err != nil || rep.Suspense != 0 || rep.Tip != 10 {
 		t.Fatalf("the old version: %+v, %v; want deposits only, tip 10", rep, err)
 	}
@@ -690,11 +691,60 @@ func TestStep_aStreamWithoutAStartIsRefused(t *testing.T) {
 	f := newFixture(t, 5)
 	f.chain.mine(deposit{account: alice, amount: eth(1), tx: tx("d")})
 	old := f.indexer()
-	old.Streams = []string{StreamDeposits}
+	old.only = []string{StreamDeposits}
 	if _, err := old.Step(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.indexer().Step(context.Background()); err == nil {
 		t.Fatal("a stream added without a starting block was read")
 	}
+}
+
+// An indexer of a version that does not read withdrawals, still running after the
+// migration that added them: the database refuses the blocks it would store, so no
+// block above the stream's start is read without it.
+func TestStep_anOlderIndexerCannotWriteAfterTheMigration(t *testing.T) {
+	f := newFixture(t, 5)
+	ctx := context.Background()
+	f.chain.mine(deposit{account: alice, amount: eth(1), tx: tx("d")})
+	old := f.indexer()
+	old.only = []string{StreamDeposits}
+	if _, err := old.Step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.owner.Exec(ctx, `INSERT INTO indexer_streams (vault, stream, live_from, backfilled_to)
+		SELECT vault, 'withdrawals', max(number) + 1, min(number) FROM indexed_blocks GROUP BY vault`); err != nil {
+		t.Fatal(err)
+	}
+	f.chain.mine(deposit{kind: KindPaid, id: common.HexToHash("0x1"), to: recipient, amount: eth(1), tx: tx("p")})
+	_, err := old.Step(ctx)
+	if err == nil || !strings.Contains(err.Error(), "an older indexer is still running") {
+		t.Fatalf("the older indexer after the migration: %v, want it refused", err)
+	}
+	f.chain.finalize(7)
+	if rep := f.step(t); rep.Suspense != 1 {
+		t.Fatalf("the new indexer: %+v, want the payment the older one could not store applied", rep)
+	}
+	f.clean(t)
+}
+
+// A deposit held while not final, then the indexer falls behind and catches up over
+// final blocks in which the deposit is paid out: the deposit is posted before the
+// payment is applied, as on chain.
+func TestStep_eventsApplyInChainOrderWhenCatchingUp(t *testing.T) {
+	f := newFixture(t, 5)
+	f.chain.mine(deposit{account: alice, amount: eth(2), tx: tx("d")})
+	f.step(t)
+	f.balance(t, alice, 2, 0)
+	for range 10 {
+		f.chain.mine()
+	}
+	f.chain.mine(deposit{kind: KindPaid, id: common.HexToHash("0x1"), to: recipient, amount: eth(2), tx: tx("p")})
+	f.chain.finalize(17)
+	rep := f.step(t)
+	if rep.Posted != 1 || rep.Suspense != 1 {
+		t.Fatalf("catching up: %+v, want the deposit posted and the payment applied", rep)
+	}
+	f.vaultHolds(t, 0)
+	f.clean(t)
 }

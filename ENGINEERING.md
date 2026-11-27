@@ -107,6 +107,20 @@ upgraded in both places in one commit.
   printed. The devnet mnemonic is public, and is still handled this way so the code
   path is the same one real keys will take.
 
+## Database
+
+- The schema changes only by numbered migrations embedded in the code
+  ([internal/ledger/migrations](internal/ledger/migrations)), applied in order under an
+  advisory lock. An applied migration is never edited: each is recorded with its
+  sha256, and a changed one stops the next run. A fix comes as a new migration.
+- A migration runs while the previous version may still be running, as in a rolling
+  deploy (expand and contract): it adds, and what the older version must no longer do
+  is refused by the database itself, not left to the order of the deploy's steps.
+- The rules that keep money right live in the database: constraints, triggers, and the
+  functions the services write through. A bug in a service cannot break them.
+- Each service connects as a login that holds only its role; migrations run as the
+  owner of the schema.
+
 ## Solidity
 
 - Every file uses the exact compiler version (`pragma solidity 0.8.39;`), the latest

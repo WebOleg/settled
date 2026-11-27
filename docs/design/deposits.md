@@ -57,6 +57,12 @@ Every event is applied once: below its stream's start by the backfill, from it o
 A stream without a start on a ledger that has read blocks is refused, not read from
 the beginning, which would count again what was read.
 
+The database holds the rule that makes this safe while two versions run side by side,
+as in a rolling deploy (migration 0006): each stored block lists the streams read in
+it, and a block at or above a stream's start without that stream is refused. An indexer of a version that
+does not read the stream, still running after the migration, cannot store a block
+whose events of the stream nobody would then read; it fails and the new one goes on.
+
 `bridge-check` compares withdrawal events only up to where the backfill has reached
 while it runs, and the ledger with the vault once it is done.
 
@@ -98,6 +104,8 @@ deposit is unique in the database, and each ledger transfer has its own key.
 | D8 Suspense | A final payment the ledger never requested is posted to suspense, so the ledger still holds what the vault holds. | `TestStep_aPaymentNobodyRequestedGoesToSuspense` |
 | D9 Cancellation | A final cancellation releases the hold. | `TestStep_aFinalCancellationReleasesTheHold` |
 | D10 Backfill | A stream added after blocks were read gets the final blocks below its start read once for it alone, the ones not yet final once they are, and every event is applied once; a stream with no start is refused. | `TestStep_aStreamAddedLaterIsBackfilledOnce`, `TestStep_aStreamWithoutAStartIsRefused` |
+| D11 Fence | A block at or above a stream's start cannot be stored without that stream, so an older indexer still running after the migration is refused. | `TestStep_anOlderIndexerCannotWriteAfterTheMigration`, a trigger on `indexed_blocks` |
+| D12 Chain order | Catching up over final blocks, what was held below them is applied first, so a payment never comes before the deposit that paid for it. | `TestStep_eventsApplyInChainOrderWhenCatchingUp` |
 
 The indexer runs as `deposit_indexer`, which holds `ledger_writer` and may insert
 blocks, deposits and withdrawal events, delete blocks that are not final, change a

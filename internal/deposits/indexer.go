@@ -36,9 +36,8 @@ type Indexer struct {
 	// MaxRange is the most final blocks read in one range; MaxBlocks the most blocks
 	// not yet final read one by one in one step.
 	MaxRange, MaxBlocks uint64
-	// Streams are the kinds of events read: StreamDeposits, StreamWithdrawals. Empty
-	// means all; a test leaves one out to stand for a version that did not read it.
-	Streams []string
+	// only, in tests, reads fewer streams, to stand for an older version.
+	only []string
 }
 
 // The streams of events the indexer reads, each from its own starting block
@@ -64,10 +63,10 @@ type position struct {
 }
 
 func (x *Indexer) streams() []string {
-	if len(x.Streams) == 0 {
+	if len(x.only) == 0 {
 		return allStreams
 	}
-	return x.Streams
+	return x.only
 }
 
 // Report is what one step did.
@@ -152,6 +151,17 @@ func (x *Indexer) Step(ctx context.Context) (Report, error) {
 		if tip, _, err = x.tip(ctx); err != nil {
 			return rep, err
 		}
+	}
+
+	// Before final blocks are read a range at a time, what is held at or below the tip
+	// is final too, since the tip is at or below the finalized block and was just found
+	// in the chain: it is applied first, so events apply in chain order.
+	if tip.number < fin.Number {
+		posted, err := x.finalize(ctx, Header{Number: tip.number, Hash: tip.hash}, &rep)
+		if err != nil {
+			return rep, err
+		}
+		rep.Posted += posted
 	}
 
 	// Final blocks, a range at a time.
@@ -374,8 +384,8 @@ func (x *Indexer) anchor(ctx context.Context, h Header, final bool) error {
 		if err := x.lock(ctx, tx); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `INSERT INTO indexed_blocks (vault, number, hash, parent_hash, final) VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT DO NOTHING`, x.Vault.Bytes(), h.Number, h.Hash.Bytes(), h.Parent.Bytes(), final)
+		_, err := tx.Exec(ctx, `INSERT INTO indexed_blocks (vault, number, hash, parent_hash, final, streams) VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT DO NOTHING`, x.Vault.Bytes(), h.Number, h.Hash.Bytes(), h.Parent.Bytes(), final, x.streams())
 		if err != nil {
 			return fmt.Errorf("deposits: record the start block: %w", err)
 		}
@@ -487,8 +497,8 @@ func (x *Indexer) record(ctx context.Context, tip stored, b Header, events []Eve
 			seen = -1
 			return nil
 		}
-		if _, err := tx.Exec(ctx, "INSERT INTO indexed_blocks (vault, number, hash, parent_hash, final) VALUES ($1, $2, $3, $4, $5)",
-			x.Vault.Bytes(), b.Number, b.Hash.Bytes(), b.Parent.Bytes(), final); err != nil {
+		if _, err := tx.Exec(ctx, "INSERT INTO indexed_blocks (vault, number, hash, parent_hash, final, streams) VALUES ($1, $2, $3, $4, $5, $6)",
+			x.Vault.Bytes(), b.Number, b.Hash.Bytes(), b.Parent.Bytes(), final, x.streams()); err != nil {
 			return fmt.Errorf("deposits: record block %d: %w", b.Number, err)
 		}
 		for _, e := range events {
