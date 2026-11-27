@@ -30,12 +30,14 @@ case "$out" in
   *"with warnings"*) printf '%s\n' "$out" | tail -30; fail "the compiler warns" ;;
 esac
 
-# Lint findings are fixed, or suppressed in the source on the line they concern with
-# the reason next to it; none may be left standing.
+# Lint findings are fixed, never suppressed: any finding of any severity fails, and so
+# does a suppression comment.
+if grep -rn 'forge-lint:' contracts/src; then fail "a forge-lint comment in contracts/src; fix the finding instead"; fi
 lint="$(forge lint src 2>&1 || true)"
-case "$lint" in
-  *"warning["* | *"error["*) printf '%s\n' "$lint" | tail -40; fail "forge lint reports findings in src/" ;;
-esac
+if printf '%s\n' "$lint" | grep -qE '^(error|warning|note|help)\['; then
+  printf '%s\n' "$lint" | tail -40
+  fail "forge lint reports findings in src/"
+fi
 
 missing=0
 while IFS= read -r src; do

@@ -3,9 +3,9 @@
 The contract that holds an exchange's funds on the L2: it takes deposits for exchange
 accounts and pays withdrawals. This file is its specification. The interface is
 [IVault.sol](../../contracts/src/interfaces/IVault.sol), the implementation
-[Vault.sol](../../contracts/src/Vault.sol), and the unit tests
-[Vault.t.sol](../../contracts/test/unit/Vault.t.sol); every invariant below has a test
-named after it.
+[Vault.sol](../../contracts/src/Vault.sol), and the unit tests in
+[test/unit](../../contracts/test/unit); every invariant below has a test named after
+it.
 
 ## Why a contract
 
@@ -178,7 +178,7 @@ and 128 invariant runs of 64 calls; CI runs 10,000 and 512 of 128.
 
 | Concern | How it is handled |
 |---|---|
-| Reentrancy | Every function that moves value is guarded (`ReentrancyGuardTransient`, transient storage, as the first modifier), and changes state and emits its event before any external call. A token deposit pulls the token last and reverts unless exactly the amount arrived. |
+| Reentrancy | Every function that moves value is guarded (`nonReentrant`, the first modifier, on a `transient` variable the compiler keeps in transient storage: no storage slot, cleared after every transaction), and changes state and emits its event before any external call. A token deposit pulls the token last and reverts unless exactly the amount arrived. |
 | Time | The vault's clock (ERC-6372, `clock()` and `CLOCK_MODE()`) is the L2 block number: whoever produces a block chooses its timestamp within the chain's rules, but not its number. Delays and refills are counted in blocks; they are durations because the OP Stack makes a block every 2 s, fixed by derivation, which `make vault-verify` checks against the rollup config. The timelock and the admin handover are OpenZeppelin's and count seconds. If the sequencer stops, it catches up afterwards by making the missed blocks at once, so a queued withdrawal can be due the moment blocks resume, with no time for the guardian in between; an alert on `WithdrawalQueued` and the guardian's pause cover it. |
 | Narrowing | Every conversion to a smaller integer goes through `SafeCast` and reverts rather than truncates. |
 | Tokens that misbehave | `SafeERC20` for tokens that return no value; the received amount is measured, and a difference reverts. Only allowed tokens are accepted. |

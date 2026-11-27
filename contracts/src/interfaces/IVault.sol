@@ -74,6 +74,7 @@ interface IVault {
     error NativeTransferFailed(address to, uint256 amount);
     error DirectTransferRejected();
     error RoleConflict(address account);
+    error ReentrantCall();
 
     /// @notice The address that stands for ETH in token arguments.
     function NATIVE() external view returns (address);

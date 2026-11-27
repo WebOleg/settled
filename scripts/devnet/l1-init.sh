@@ -46,14 +46,16 @@ if ! docker run --rm -e GENESIS_TIMESTAMP="$genesis_timestamp" \
 fi
 
 # The validator mnemonic is the generator's public test mnemonic. It is read inside
-# the container and never printed. The single quotes are deliberate: the variables expand
-# inside the container, not on the host.
-# shellcheck disable=SC2016
-if ! docker run --rm --entrypoint sh -v "$dir/genesis:/data" -v "$values:/config/values.env:ro" \
-     "$gen_image" -c '. /config/values.env; . /defaults/defaults.env;
-       exec eth2-val-tools keystores --insecure --source-mnemonic "$EL_AND_CL_MNEMONIC" \
-         --source-min 0 --source-max "$NUMBER_OF_VALIDATORS" --out-loc /data/keys' \
-     >>"$log" 2>&1; then
+# the container and never printed: the script goes in as a quoted here-document, so its
+# variables expand in the container, not on the host.
+if ! docker run --rm -i --entrypoint sh -v "$dir/genesis:/data" -v "$values:/config/values.env:ro" \
+     "$gen_image" -s >>"$log" 2>&1 <<'SH'
+. /config/values.env
+. /defaults/defaults.env
+exec eth2-val-tools keystores --insecure --source-mnemonic "$EL_AND_CL_MNEMONIC" \
+  --source-min 0 --source-max "$NUMBER_OF_VALIDATORS" --out-loc /data/keys
+SH
+then
   echo "l1-init: keystore generation failed, last lines:"
   tail -20 "$log"
   remove_state

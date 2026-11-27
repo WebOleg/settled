@@ -3,7 +3,7 @@
 The findings on [Vault.sol](../../contracts/src/Vault.sol) and what was done about each.
 The specification is [docs/design/vault.md](../design/vault.md). Every finding is
 fixed in the code or, where the finding came from the tool, in the tool; nothing is
-suppressed, and `make check` fails on any lint finding.
+suppressed, and `make check` fails on any lint finding or compiler warning.
 
 ## forge lint
 
@@ -22,3 +22,14 @@ nothing.
 the vault's own storage accessor out of the way. The compiler refuses to let another
 contract inherit from one with a custom layout, which the upgrade tests rely on, and
 the findings came from OpenZeppelin's accessors in any case.
+
+## Compiler warnings
+
+The contracts build with no warning filter: `ignored_error_codes = []` turns off the
+ones forge hides by default, and the libraries are not exempt. Two warnings were
+hidden before.
+
+| Warning | Where | Resolution |
+|---|---|---|
+| 2394, transient storage | OpenZeppelin's `TransientSlot`, used by `ReentrancyGuardTransient` | Fixed. The vault has its own guard on a `transient` state variable: the same transient storage, managed by the compiler instead of inline assembly, so there is nothing to warn about. OpenZeppelin's storage-based `ReentrancyGuard` would also avoid it, but it is deprecated. Tests check that a token calling back into `deposit` or `withdraw` gets `ReentrantCall`, the guard's own error, not some other refusal. |
+| 3860, initcode over 48 KB | the unit test contract | Fixed. The unit tests are split into one contract per topic on a shared base, and the upgrade test deploys the next version from its artifact, so no test contract embeds two copies of the vault. |

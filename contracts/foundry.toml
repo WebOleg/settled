@@ -17,9 +17,10 @@ optimizer_runs = 10000
 # a deployed contract can be compared with a local build.
 bytecode_hash = "none"
 cbor_metadata = false
-# Warnings count as failures in make check-contracts; the libraries' own (OpenZeppelin's
-# note on transient storage, which its reentrancy guard uses safely) are not ours to fix.
-ignored_warnings_from = ["lib"]
+# Every compiler warning counts as a failure in make check-contracts, the libraries'
+# included. Forge hides some by default (code size, transient storage, licence); the
+# empty list turns that off, so nothing is hidden.
+ignored_error_codes = []
 # Tests are compiled as written. With dynamic test linking, forge turns `new Vault()` in
 # a test into a vm.deployCode call, which Halmos does not implement: the symbolic tests
 # stopped in setUp() on it.

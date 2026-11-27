@@ -36,6 +36,9 @@ the host.
 | Foundry v1.10.1 | forge lint in v1.9.0 counts every inline assembly block as an external call, so it flags every event behind OpenZeppelin's storage accessors ([docs/review/vault.md](../docs/review/vault.md)); v1.10.0 fixed that, but its arm64 image ships `forge`, `cast` and `chisel` as 434 KB files that print nothing and exit 0. In v1.10.1 `forge` is 114 MB on arm64 and 129 MB on amd64 and works on both. CI runs amd64 only and would not notice a broken arm64 image, so the check requires an artifact for every source file, not only exit code 0. |
 | solc 0.8.39 | The latest release, and the only recent one with no known bug in the Solidity bug list; 0.8.38 has two storage copy bugs. Every file uses this exact version. |
 | `evm_version = "cancun"` | The newest opcodes the contracts need: transient storage, for the reentrancy guard. |
+| No compiler warning hidden | `ignored_error_codes = []`: forge hides the warnings on code size and transient storage by default, and the libraries' warnings are not filtered either, so any warning fails the check. |
+| The reentrancy guard in the vault, not OpenZeppelin's | `ReentrancyGuardTransient` writes transient storage in inline assembly, which the compiler warns about; `ReentrancyGuard` keeps a storage slot and is deprecated in OpenZeppelin 5.7. A `transient` state variable is the same mechanism checked by the compiler, in eight lines, with tests that a callback into `deposit` or `withdraw` gets `ReentrantCall`. |
+| Unit tests in several contracts | One contract per topic keeps each under the 48 KB initcode limit, which the compiler warns about; the upgrade test deploys the next version from its artifact for the same reason. |
 | No metadata hash in the bytecode | The same source always gives the same bytes, so a deployed contract can be compared with a local build. |
 | Halmos in its own image, for linux/amd64 | Halmos 0.3.3 pins z3-solver 4.12.6.0, which has no arm64 wheel. The image runs natively in CI and under emulation on an arm64 Mac; the image tag is a hash of the Dockerfile and the requirements, so a change rebuilds it. |
 | z3, not Halmos' default yices | Under emulation yices starts but is killed by an illegal instruction as soon as it solves; z3 gives the same answer on both machines. A trial run showed z3 proving a property and finding the counterexample of a false one. |
@@ -47,14 +50,14 @@ the host.
 |---|---|
 | [foundry.toml](foundry.toml) | Compiler, EVM target, library paths |
 | [src/interfaces/IVault.sol](src/interfaces/IVault.sol) | The vault's interface: types, events, errors, functions |
-| [src/Vault.sol](src/Vault.sol) | The vault, built on OpenZeppelin: default admin rules, pause, UUPS, transient reentrancy guard, SafeERC20 |
-| [test/unit/Vault.t.sol](test/unit/Vault.t.sol) | A test for each rule of the specification, the bad case included |
+| [src/Vault.sol](src/Vault.sol) | The vault, built on OpenZeppelin: default admin rules, pause, UUPS, SafeERC20; its own reentrancy guard on a `transient` variable |
+| [test/unit](test/unit) | A test for each rule of the specification, the bad case included, one contract per topic: deposits, withdrawals, queue and pause, administration, upgrades |
 | [test/unit/VaultLayout.t.sol](test/unit/VaultLayout.t.sol) | I10: where each field of the state lives, read slot by slot from the proxy |
 | [test/fuzz/VaultFuzz.t.sol](test/fuzz/VaultFuzz.t.sol) | The rules over random amounts, ids and times; the rate limit checked over every span |
 | [test/invariant](test/invariant) | I1 to I9 over random sequences of every call by every key; the handler keeps its own books |
 | [test/symbolic/VaultSymbolic.t.sol](test/symbolic/VaultSymbolic.t.sol) | I1, I2, I3, I4, I7 proved by Halmos for every value of the arguments |
 | [test/deploy/VaultDeploy.t.sol](test/deploy/VaultDeploy.t.sol) | The devnet deployment step for step: the timelock as only admin, the first configuration through its delay, a cancelled proposal |
-| [test/utils/VaultSetup.sol](test/utils/VaultSetup.sol) | The vault behind its proxy, configured, as the fuzz, invariant and layout tests start |
+| [test/utils](test/utils) | `VaultSetup`: the vault behind its proxy, configured, as every test starts; `VaultUnitBase`: a funded user and the helpers of the unit tests |
 | [test/mocks](test/mocks) | Tokens that misbehave (a fee on transfer, no return value, a callback into the vault), a recipient that refuses ETH, and a next version of the vault for the upgrade test |
 | `.gas-snapshot` | Gas of each unit test |
 | `lib/` | The libraries above, as submodules |

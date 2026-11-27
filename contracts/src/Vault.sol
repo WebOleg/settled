@@ -12,7 +12,6 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Time} from "@openzeppelin/contracts/utils/types/Time.sol";
-import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
 import {IVault} from "./interfaces/IVault.sol";
 
@@ -28,8 +27,7 @@ contract Vault is
     Initializable,
     AccessControlDefaultAdminRulesUpgradeable,
     PausableUpgradeable,
-    UUPSUpgradeable,
-    ReentrancyGuardTransient
+    UUPSUpgradeable
 {
     using SafeERC20 for IERC20;
 
@@ -63,6 +61,12 @@ contract Vault is
     /// @dev keccak256(abi.encode(uint256(keccak256("settled.storage.Vault")) - 1)) & ~bytes32(uint256(0xff))
     bytes32 private constant VAULT_STORAGE = 0x5ac1c85adb445d425e55ded6d1add579c7a310bbf7ac0a67b795090228056e00;
 
+    /// @dev Set while a guarded function runs. A transient variable: the compiler keeps
+    /// it in transient storage (EIP-1153), which takes no storage slot, so it cannot
+    /// collide with the proxy's state, and is cleared at the end of every transaction,
+    /// so it cannot outlive a call or an upgrade.
+    bool private transient _entered;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -81,6 +85,14 @@ contract Vault is
         _grantRole(OPERATOR_ROLE, operator);
         _grantRole(GUARDIAN_ROLE, guardian);
         _setWithdrawalDelay(delay);
+    }
+
+    /// @dev One guarded function at a time: a call into any of them while one runs, from
+    /// a token's callback or a recipient, reverts.
+    modifier nonReentrant() {
+        _enter();
+        _;
+        _exit();
     }
 
     /// @notice ETH without an account is refused; use deposit.
@@ -307,6 +319,15 @@ contract Vault is
 
     /// @dev Upgrades go through the admin, that is, through the timelock.
     function _authorizeUpgrade(address) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+
+    function _enter() private {
+        if (_entered) revert ReentrantCall();
+        _entered = true;
+    }
+
+    function _exit() private {
+        _entered = false;
+    }
 
     function _setWithdrawalDelay(uint64 delay) private {
         if (delay < MIN_WITHDRAWAL_DELAY || delay > MAX_WITHDRAWAL_DELAY) revert InvalidConfig();

@@ -4,12 +4,13 @@ pragma solidity 0.8.39;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 /// @dev An ERC-20 that calls back into a target during transfers, to test the
-/// reentrancy guard. The call's result is recorded, not propagated.
+/// reentrancy guard. The call's result and revert data are recorded, not propagated.
 contract ReenteringToken is ERC20 {
     address public target;
     bytes public data;
     bool public reentered;
     bool public reentrySucceeded;
+    bytes public reentryError;
 
     constructor() ERC20("Reenter", "RE") {}
 
@@ -26,7 +27,7 @@ contract ReenteringToken is ERC20 {
         super._update(from, to, value);
         if (target != address(0) && !reentered) {
             reentered = true;
-            (reentrySucceeded,) = target.call(data);
+            (reentrySucceeded, reentryError) = target.call(data);
         }
     }
 }

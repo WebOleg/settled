@@ -9,7 +9,7 @@ import {Vault} from "../../src/Vault.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 
 /// @notice The vault behind its proxy, with ETH and one token allowed and both rate
-/// limits full, as the fuzz, invariant and layout tests start from it.
+/// limits full, as the unit, fuzz, invariant and layout tests start from it.
 abstract contract VaultSetup is Test {
     Vault internal vault;
     MockERC20 internal token;
@@ -21,25 +21,32 @@ abstract contract VaultSetup is Test {
     address internal recipient = makeAddr("recipient");
 
     uint128 internal constant CAPACITY = 100 ether;
-    // In blocks: an hour and an hour at the L2's 2 s block time.
+    // REFILL and DELAY are in blocks: an hour each at the L2's 2 s block time.
     uint64 internal constant REFILL = 1800;
     uint128 internal constant LARGE = 50 ether;
     uint64 internal constant DELAY = 1800;
     uint48 internal constant ADMIN_DELAY = 1 days;
 
     function setUpVault() internal {
-        Vault implementation = new Vault();
-        bytes memory init = abi.encodeCall(Vault.initialize, (admin, ADMIN_DELAY, operator, guardian, DELAY));
-        vault = Vault(payable(address(new ERC1967Proxy(address(implementation), init))));
+        vault = deployVault(admin, operator, guardian);
         native = vault.NATIVE();
         token = new MockERC20();
-
-        IVault.TokenConfig memory config =
-            IVault.TokenConfig({allowed: true, capacity: CAPACITY, refillPeriod: REFILL, largeThreshold: LARGE});
         vm.startPrank(admin);
-        vault.setTokenConfig(native, config);
-        vault.setTokenConfig(address(token), config);
+        vault.setTokenConfig(native, tokenConfig());
+        vault.setTokenConfig(address(token), tokenConfig());
         vm.stopPrank();
+        // Buckets start empty and fill over one refill period.
         vm.roll(vm.getBlockNumber() + REFILL);
+    }
+
+    /// A new vault behind its proxy, initialized in the same transaction.
+    function deployVault(address admin_, address operator_, address guardian_) internal returns (Vault) {
+        Vault implementation = new Vault();
+        bytes memory init = abi.encodeCall(Vault.initialize, (admin_, ADMIN_DELAY, operator_, guardian_, DELAY));
+        return Vault(payable(address(new ERC1967Proxy(address(implementation), init))));
+    }
+
+    function tokenConfig() internal pure returns (IVault.TokenConfig memory) {
+        return IVault.TokenConfig({allowed: true, capacity: CAPACITY, refillPeriod: REFILL, largeThreshold: LARGE});
     }
 }
