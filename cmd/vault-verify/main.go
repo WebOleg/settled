@@ -10,7 +10,8 @@
 //     and the guardian hold their roles and nothing else; the deployer and the timelock
 //     proposer hold no role on the vault; the timelock administers itself;
 //   - the parameters: every delay and the ETH configuration are the ones in
-//     internal/vaultconf, and the vault is not paused.
+//     internal/vaultconf, and the vault is not paused;
+//   - what the vault's time source relies on: the L2 block time is fixed by derivation.
 package main
 
 import (
@@ -102,6 +103,7 @@ func run(ctx context.Context, rpcURL, outDir string) (int, int, error) {
 		return 0, 0, fmt.Errorf("read the L2 genesis: %w", err)
 	}
 	v.report("the record is for this L2", equal(genesis.Hash(), d.L2Genesis), d.L2Genesis.Hex())
+	v.report("L2 block time is fixed by derivation", fixedBlockTime(ctx, client, genesis.Time), "timestamp = genesis + block time x number")
 
 	// Code.
 	for _, c := range []struct {
@@ -164,6 +166,31 @@ func run(ctx context.Context, rpcURL, outDir string) (int, int, error) {
 	v.number("not paused", d.Vault, "paused()", 0)
 	v.tokenConfig(d.Vault)
 	return v.failed, v.total, nil
+}
+
+// fixedBlockTime checks what the vault's time source relies on: the latest L2 block's
+// timestamp is the genesis timestamp plus the rollup's block time per block, so no one
+// chooses it.
+func fixedBlockTime(ctx context.Context, client *ethclient.Client, genesisTime uint64) error {
+	raw, err := os.ReadFile(filepath.Join(".devnet", "l2", "deployer", "rollup.json"))
+	if err != nil {
+		return fmt.Errorf("read rollup.json: %w", err)
+	}
+	var rollup struct {
+		BlockTime uint64 `json:"block_time"`
+	}
+	if err := json.Unmarshal(raw, &rollup); err != nil || rollup.BlockTime == 0 {
+		return fmt.Errorf("no block_time in rollup.json: %w", errors.Join(err, errors.New("missing")))
+	}
+	head, err := client.HeaderByNumber(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("read the latest header: %w", err)
+	}
+	want := genesisTime + rollup.BlockTime*head.Number.Uint64()
+	if head.Time != want {
+		return fmt.Errorf("block %s has timestamp %d, want %d", head.Number, head.Time, want)
+	}
+	return nil
 }
 
 // addresses reads the role addresses the keys directory lists; verification needs no key.

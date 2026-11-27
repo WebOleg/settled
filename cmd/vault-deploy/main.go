@@ -24,7 +24,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -33,6 +32,7 @@ import (
 	"github.com/WebOleg/settled/internal/devkeys"
 	"github.com/WebOleg/settled/internal/funding"
 	"github.com/WebOleg/settled/internal/rolekeys"
+	"github.com/WebOleg/settled/internal/timelockop"
 	"github.com/WebOleg/settled/internal/txsend"
 	"github.com/WebOleg/settled/internal/vaultconf"
 )
@@ -219,53 +219,12 @@ func configure(ctx context.Context, client *ethclient.Client, proposer *ecdsa.Pr
 	if err != nil {
 		return err
 	}
-	salt := crypto.Keccak256Hash([]byte("settled: vault initial token config"))
-	var predecessor [32]byte
-	schedule, err := timelock.Call("schedule", vaultAddr, new(big.Int), call, predecessor, salt, delay)
+	op := timelockop.Op{Target: vaultAddr, Data: call, Salt: crypto.Keccak256Hash([]byte("settled: vault initial token config"))}
+	receipt, _, err := timelockop.Run(ctx, client, proposer, timelock, timelockAddr, op, delay, func(s string) {
+		fmt.Printf("proposed         ETH configuration: %s\n", s)
+	})
 	if err != nil {
-		return err
-	}
-	if _, err := txsend.Send(ctx, client, proposer, timelockAddr, new(big.Int), schedule); err != nil {
-		return fmt.Errorf("propose the ETH configuration: %w", err)
-	}
-	hash, err := timelock.Call("hashOperation", vaultAddr, new(big.Int), call, predecessor, salt)
-	if err != nil {
-		return err
-	}
-	raw, err := client.CallContract(ctx, ethereum.CallMsg{To: &timelockAddr, Data: hash}, nil)
-	if err != nil || len(raw) != 32 {
-		return fmt.Errorf("read the operation id: %w", errors.Join(err, errors.New("want one word")))
-	}
-	id := common.BytesToHash(raw)
-	fmt.Printf("proposed         ETH configuration, operation %s; waiting %d s\n", id, vaultconf.TimelockDelay)
-
-	ready, err := timelock.Call("isOperationReady", id)
-	if err != nil {
-		return err
-	}
-	tick := time.NewTicker(2 * time.Second)
-	defer tick.Stop()
-	for {
-		out, err := client.CallContract(ctx, ethereum.CallMsg{To: &timelockAddr, Data: ready}, nil)
-		if err != nil {
-			return fmt.Errorf("read whether the operation is ready: %w", err)
-		}
-		if len(out) == 32 && out[31] == 1 {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("the operation did not become ready: %w", ctx.Err())
-		case <-tick.C:
-		}
-	}
-	execute, err := timelock.Call("execute", vaultAddr, new(big.Int), call, predecessor, salt)
-	if err != nil {
-		return err
-	}
-	receipt, err := txsend.Send(ctx, client, proposer, timelockAddr, new(big.Int), execute)
-	if err != nil {
-		return fmt.Errorf("execute the ETH configuration: %w", err)
+		return fmt.Errorf("configure ETH through the timelock: %w", err)
 	}
 	fmt.Printf("configured       ETH: capacity %s ETH per %d s, queued from %s ETH; block %s\n",
 		funding.FormatEther(config.Capacity), config.RefillPeriod, funding.FormatEther(config.LargeThreshold), receipt.BlockNumber)

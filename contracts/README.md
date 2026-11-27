@@ -1,7 +1,8 @@
 # Contracts
 
 The Solidity contracts of the exchange on the L2. What they do and the invariants they
-keep are in [docs/design/vault.md](../docs/design/vault.md).
+keep are in [docs/design/vault.md](../docs/design/vault.md); the review and what was done
+about each finding in [docs/review/vault.md](../docs/review/vault.md).
 
 ## Commands
 
@@ -10,6 +11,7 @@ keep are in [docs/design/vault.md](../docs/design/vault.md).
 | `make check-contracts` | Checks formatting, builds without compiler warnings, checks that every source file built an artifact, runs the tests, compares the gas of the unit tests with `.gas-snapshot`, and runs the symbolic tests with Halmos; part of `make check` |
 | `make vault-deploy` | Deploys the vault to the devnet L2 behind a timelock and a proxy, once per L2 ([docs/design/vault.md](../docs/design/vault.md#deployment)) |
 | `make vault-verify` | Checks the deployed vault against this repository: code byte for byte, roles, delays, configuration |
+| `make vault-upgrade` | Upgrades the vault to the code the repository builds, through the timelock; does nothing when it already runs that code |
 | `make vault-reset` | Forgets the deployment, keeps the keys, for a new L2 |
 | `make contracts-snapshot` | Records the gas of the unit tests in `.gas-snapshot`. A change in gas shows in review as a change to that file. |
 

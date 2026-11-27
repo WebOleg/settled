@@ -134,6 +134,15 @@ handover pending, and every delay and the ETH configuration must be the values a
 [VaultDeploy.t.sol](../../contracts/test/deploy/VaultDeploy.t.sol) runs the same steps
 in forge, the delay and a cancelled proposal included.
 
+### Upgrades on the devnet
+
+`make vault-upgrade` ([cmd/vault-upgrade](../../cmd/vault-upgrade/main.go)) moves the
+vault to the code the repository builds now: the deployer deploys the new
+implementation, the timelock proposer schedules `upgradeToAndCall` through the timelock,
+and after its delay the timelock executes it. The state stays in the proxy, and
+`make vault-verify` checks code, roles and configuration again. When the vault already
+runs the code of the build, it does nothing.
+
 ## Invariants
 
 The tests check each of these by name: unit tests for each rule
@@ -163,7 +172,9 @@ and 128 invariant runs of 64 calls; CI runs 10,000 and 512 of 128.
 
 | Concern | How it is handled |
 |---|---|
-| Reentrancy | Every function that moves value is guarded (`ReentrancyGuardTransient`, transient storage), and changes state before any external call. |
+| Reentrancy | Every function that moves value is guarded (`ReentrancyGuardTransient`, transient storage, as the first modifier), and changes state and emits its event before any external call. A token deposit pulls the token last and reverts unless exactly the amount arrived. |
+| Time | One source, `_now()`, as a uint64 by `SafeCast`. On an OP Stack L2 a block's timestamp is fixed by derivation (genesis time plus the block time per block), so the sequencer cannot move it; `make vault-verify` checks this on the devnet. If the sequencer stops, chain time resumes where wall time is, and a queued withdrawal can be due the moment blocks resume, with no time for the guardian in between; an alert on `WithdrawalQueued` and the guardian's pause cover it. |
+| Narrowing | Every conversion to a smaller integer goes through `SafeCast` and reverts rather than truncates. |
 | Tokens that misbehave | `SafeERC20` for tokens that return no value; the received amount is measured, and a difference reverts. Only allowed tokens are accepted. |
 | ETH to a contract that reverts | The payment reverts with `NativeTransferFailed` and the id stays unused, so the ledger can retry or send it elsewhere. |
 | A stolen operator key | At most the rate limit at once; large amounts wait in the queue for the guardian. |

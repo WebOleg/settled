@@ -9,9 +9,17 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Pau
 import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
 import {IVault} from "./interfaces/IVault.sol";
+
+// forge-lint: disable-start(reentrancy-events)
+// The lint flags every event in this contract, including those in functions that make
+// no external call at all (cancelQueued, setTokenConfig, setWithdrawalDelay): it does not
+// see through the ERC-7201 storage accessor. Every event here is emitted before any
+// external call that can change state, and every function that makes one is guarded by
+// nonReentrant (docs/review/vault.md).
 
 /// @title Vault
 /// @notice Holds an exchange's funds on the L2: deposits for exchange accounts, and
@@ -88,8 +96,8 @@ contract Vault is
     function deposit(address token, uint256 amount, bytes32 account)
         external
         payable
-        whenNotPaused
         nonReentrant
+        whenNotPaused
         returns (uint256 depositId)
     {
         if (account == bytes32(0)) revert ZeroAccount();
@@ -99,19 +107,23 @@ contract Vault is
 
         if (token == NATIVE) {
             if (msg.value != amount) revert ValueMismatch(amount, msg.value);
-        } else {
-            if (msg.value != 0) revert ValueMismatch(0, msg.value);
-            // The amount received is measured, not trusted: a token that takes a fee on
-            // transfer is refused rather than credited more than arrived (I8).
-            uint256 before = IERC20(token).balanceOf(address(this));
-            IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
-            uint256 received = IERC20(token).balanceOf(address(this)) - before;
-            if (received != amount) revert TransferAmountMismatch(token, amount, received);
+        } else if (msg.value != 0) {
+            revert ValueMismatch(0, msg.value);
         }
 
         $.accounted[token] += amount;
         depositId = $.depositCount++;
         emit Deposited(depositId, token, msg.sender, account, amount);
+
+        // The token is pulled last, after the books and the event. The amount received is
+        // measured, not trusted: if it is not exactly amount (a token that takes a fee on
+        // transfer), the whole deposit reverts, books and event with it (I8).
+        if (token != NATIVE) {
+            uint256 before = IERC20(token).balanceOf(address(this));
+            IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+            uint256 received = IERC20(token).balanceOf(address(this)) - before;
+            if (received != amount) revert TransferAmountMismatch(token, amount, received);
+        }
     }
 
     // Withdrawals
@@ -119,9 +131,9 @@ contract Vault is
     /// @inheritdoc IVault
     function withdraw(bytes32 id, address token, address to, uint256 amount)
         external
+        nonReentrant
         onlyRole(OPERATOR_ROLE)
         whenNotPaused
-        nonReentrant
         returns (WithdrawalStatus status)
     {
         VaultStorage storage $ = _vault();
@@ -140,7 +152,7 @@ contract Vault is
         w.amount = amount;
 
         if (amount >= config.largeThreshold) {
-            uint64 releaseAt = uint64(block.timestamp) + $.withdrawalDelay;
+            uint64 releaseAt = _now() + $.withdrawalDelay;
             w.status = WithdrawalStatus.Queued;
             w.releaseAt = releaseAt;
             emit WithdrawalQueued(id, token, to, amount, releaseAt);
@@ -155,11 +167,14 @@ contract Vault is
     }
 
     /// @inheritdoc IVault
-    function executeQueued(bytes32 id) external onlyRole(OPERATOR_ROLE) whenNotPaused nonReentrant {
+    function executeQueued(bytes32 id) external nonReentrant onlyRole(OPERATOR_ROLE) whenNotPaused {
         VaultStorage storage $ = _vault();
         Withdrawal storage w = $.withdrawals[id];
         if (w.status != WithdrawalStatus.Queued) revert WithdrawalNotQueued(id, w.status);
-        if (block.timestamp < w.releaseAt) revert WithdrawalNotReleased(id, w.releaseAt);
+        // Block time is fixed by derivation on the L2 and cannot be moved by the sequencer
+        // (see _now).
+        // forge-lint: disable-next-line(block-timestamp)
+        if (_now() < w.releaseAt) revert WithdrawalNotReleased(id, w.releaseAt);
         address token = w.token;
         if (!$.tokens[token].allowed) revert TokenNotAllowed(token);
 
@@ -204,9 +219,9 @@ contract Vault is
         VaultStorage storage $ = _vault();
         // The bucket keeps what it had, up to the new capacity: changing the limit does
         // not refill it, and a new token starts empty.
-        uint128 level = uint128(_available($, token));
+        uint128 level = SafeCast.toUint128(_available($, token));
         if (level > config.capacity) level = config.capacity;
-        $.buckets[token] = Bucket({level: level, updatedAt: uint64(block.timestamp)});
+        $.buckets[token] = Bucket({level: level, updatedAt: _now()});
         $.tokens[token] = config;
         emit TokenConfigured(token, config);
     }
@@ -219,8 +234,8 @@ contract Vault is
     /// @inheritdoc IVault
     function skim(address token, address to)
         external
-        onlyRole(DEFAULT_ADMIN_ROLE)
         nonReentrant
+        onlyRole(DEFAULT_ADMIN_ROLE)
         returns (uint256 amount)
     {
         if (to == address(0)) revert ZeroAddress();
@@ -295,7 +310,7 @@ contract Vault is
         TokenConfig memory config = $.tokens[token];
         if (!config.allowed) return 0;
         Bucket memory bucket = $.buckets[token];
-        uint256 refill = (block.timestamp - bucket.updatedAt) * config.capacity / config.refillPeriod;
+        uint256 refill = uint256(_now() - bucket.updatedAt) * config.capacity / config.refillPeriod;
         uint256 level = bucket.level + refill;
         return level > config.capacity ? config.capacity : level;
     }
@@ -303,8 +318,7 @@ contract Vault is
     function _take(VaultStorage storage $, address token, uint256 amount) private {
         uint256 level = _available($, token);
         if (amount > level) revert RateLimited(token, amount, level);
-        // level is at most capacity, a uint128.
-        $.buckets[token] = Bucket({level: uint128(level - amount), updatedAt: uint64(block.timestamp)});
+        $.buckets[token] = Bucket({level: SafeCast.toUint128(level - amount), updatedAt: _now()});
     }
 
     /// @dev Lowers what is owed, then sends (I1, I2).
@@ -333,9 +347,20 @@ contract Vault is
         }
     }
 
+    /// @dev The one source of time in the vault. Delays and refills are measured in block
+    /// time, which the vault can trust here: on an OP Stack L2 every block's timestamp is
+    /// fixed by derivation, genesis time plus the block time per block, so the sequencer
+    /// cannot move it, and vault-verify checks this on the devnet; on Ethereum since the
+    /// Merge it is fixed per slot. Block time only moves forward, so elapsed time never
+    /// underflows. SafeCast makes the uint64 exact rather than assumed.
+    function _now() private view returns (uint64) {
+        return SafeCast.toUint64(block.timestamp);
+    }
+
     function _vault() private pure returns (VaultStorage storage $) {
         assembly ("memory-safe") {
             $.slot := VAULT_STORAGE
         }
     }
 }
+// forge-lint: disable-end(reentrancy-events)

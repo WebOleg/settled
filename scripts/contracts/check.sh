@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Checks the contracts in the pinned Foundry image: formatting, a build without compiler
 # warnings, an artifact for every source file (forge in a broken image once exited 0 and
-# built nothing), the tests, the gas of the unit tests against .gas-snapshot, and the
+# built nothing), forge lint on src/ with no finding, the tests, the gas of the unit
+# tests against .gas-snapshot, and the
 # symbolic tests with Halmos, in its own image (infra/images/halmos), built here when the
 # image for the current Dockerfile and requirements is missing. Run as the calling user, with HOME on
 # .cache/foundry, so files in the repository stay owned by that user and solc is
@@ -27,6 +28,13 @@ forge fmt --check >/dev/null 2>&1 || { forge fmt --check 2>&1 | head -40; fail "
 out="$(forge build --force 2>&1)" || { printf '%s\n' "$out" | tail -30; fail "build failed"; }
 case "$out" in
   *"with warnings"*) printf '%s\n' "$out" | tail -30; fail "the compiler warns" ;;
+esac
+
+# Lint findings are fixed, or suppressed in the source on the line they concern with
+# the reason next to it; none may be left standing.
+lint="$(forge lint src 2>&1 || true)"
+case "$lint" in
+  *"warning["* | *"error["*) printf '%s\n' "$lint" | tail -40; fail "forge lint reports findings in src/" ;;
 esac
 
 missing=0

@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts contracts-snapshot l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-reset l2-logs l2-down l2-reset
+.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts contracts-snapshot l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-upgrade vault-reset l2-logs l2-down l2-reset
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
@@ -148,6 +148,10 @@ vault-deploy: ## Deploy the vault to the L2 behind a timelock and a proxy; once 
 vault-verify: ## Check the vault on the L2 against the repository: code, roles, delays, configuration
 	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/contracts/build.sh
 	@go run ./cmd/vault-verify
+
+vault-upgrade: ## Upgrade the vault to the code the repository builds, through the timelock
+	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/contracts/build.sh
+	@go run ./cmd/vault-upgrade
 
 vault-reset: ## Forget the vault deployment and keep its keys, for a new L2
 	@scripts/contracts/vault-deploy.sh --reset
