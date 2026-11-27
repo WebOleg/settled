@@ -96,6 +96,44 @@ test reads the proxy's storage slot by slot and checks where each field lives
 retyping or inserting a field fails the check until it is reviewed as a migration. The implementation disables its own initializer, so it cannot be
 taken over directly.
 
+## Deployment
+
+`make vault-deploy` puts the vault on the devnet L2 the way it would go to production
+([cmd/vault-deploy](../../cmd/vault-deploy/main.go)), once per L2:
+
+1. A `TimelockController` with the timelock proposer as its only proposer, executor and
+   canceller, and no separate admin: it administers itself, so its own roles change
+   only through its delay.
+2. The vault implementation, whose constructor disables its initializer.
+3. An `ERC1967Proxy` to the implementation, created and initialized in one transaction,
+   so no one can initialize it in between. Its admin is the timelock.
+4. The first rule, the ETH configuration, proposed to the timelock and executed after
+   the delay: from the first change on, the rules change the way they always will.
+
+The four keys (deployer, operator, guardian, timelock proposer) are created once in
+`.devnet/vault/keys`, readable by the owner only, and the deployer holds no role when it
+is done. Addresses and the L2 they belong to are recorded in
+`.devnet/vault/deployment.json`; a second run on the same L2 changes nothing, and a
+record for another L2 is refused.
+
+| Parameter | Devnet | Production |
+|---|---|---|
+| Timelock delay | 60 s | days |
+| Admin handover delay | 300 s | days |
+| Queue delay for large withdrawals | 120 s | hours |
+| ETH rate limit | 10 ETH, refilled over an hour | set from the daily flow |
+| ETH queue threshold | 5 ETH | set from the daily flow |
+
+`make vault-verify` ([cmd/vault-verify](../../cmd/vault-verify/main.go)) checks the chain
+against the repository and needs no key. The code of the timelock, the proxy and the
+implementation must be byte for byte what forge builds now, immutables aside, and the
+implementation's one immutable must be its own address. The proxy must point at that
+implementation, which must refuse to be initialized. Every role must be held by the key
+meant for it and by no other, the timelock must be the vault's only admin with no
+handover pending, and every delay and the ETH configuration must be the values above.
+[VaultDeploy.t.sol](../../contracts/test/deploy/VaultDeploy.t.sol) runs the same steps
+in forge, the delay and a cancelled proposal included.
+
 ## Invariants
 
 The tests check each of these by name: unit tests for each rule

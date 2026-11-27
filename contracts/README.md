@@ -8,6 +8,9 @@ keep are in [docs/design/vault.md](../docs/design/vault.md).
 | Command | What it does |
 |---|---|
 | `make check-contracts` | Checks formatting, builds without compiler warnings, checks that every source file built an artifact, runs the tests, compares the gas of the unit tests with `.gas-snapshot`, and runs the symbolic tests with Halmos; part of `make check` |
+| `make vault-deploy` | Deploys the vault to the devnet L2 behind a timelock and a proxy, once per L2 ([docs/design/vault.md](../docs/design/vault.md#deployment)) |
+| `make vault-verify` | Checks the deployed vault against this repository: code byte for byte, roles, delays, configuration |
+| `make vault-reset` | Forgets the deployment, keeps the keys, for a new L2 |
 | `make contracts-snapshot` | Records the gas of the unit tests in `.gas-snapshot`. A change in gas shows in review as a change to that file. |
 
 `FOUNDRY_PROFILE=ci` runs the fuzz and invariant tests deeper, as CI does
@@ -48,6 +51,7 @@ the host.
 | [test/fuzz/VaultFuzz.t.sol](test/fuzz/VaultFuzz.t.sol) | The rules over random amounts, ids and times; the rate limit checked over every span |
 | [test/invariant](test/invariant) | I1 to I9 over random sequences of every call by every key; the handler keeps its own books |
 | [test/symbolic/VaultSymbolic.t.sol](test/symbolic/VaultSymbolic.t.sol) | I1, I2, I3, I4, I7 proved by Halmos for every value of the arguments |
+| [test/deploy/VaultDeploy.t.sol](test/deploy/VaultDeploy.t.sol) | The devnet deployment step for step: the timelock as only admin, the first configuration through its delay, a cancelled proposal |
 | [test/utils/VaultSetup.sol](test/utils/VaultSetup.sol) | The vault behind its proxy, configured, as the fuzz, invariant and layout tests start |
 | [test/mocks](test/mocks) | Tokens that misbehave (a fee on transfer, no return value, a callback into the vault), a recipient that refuses ETH, and a next version of the vault for the upgrade test |
 | `.gas-snapshot` | Gas of each unit test |

@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts contracts-snapshot l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load l2-logs l2-down l2-reset
+.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts contracts-snapshot l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-reset l2-logs l2-down l2-reset
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
@@ -42,6 +42,7 @@ reset: ## Stop everything and delete chain data, metrics and the deployment; rol
 	@$(L2) down
 	@$(L1) down
 	@scripts/devnet/l2-init.sh --reset
+	@scripts/contracts/vault-deploy.sh --reset
 	@scripts/observability/obs-init.sh --reset
 	@scripts/devnet/l2-deploy.sh --reset
 	@scripts/devnet/l1-init.sh --reset
@@ -135,10 +136,21 @@ l2-down: ## Stop the L2 services and keep their data; stops observability first
 	@$(OBS) down
 	@$(L2) down
 
-l2-reset: ## Stop the L2 services and delete the chain data (keys and deployment kept)
+l2-reset: ## Stop the L2 services and delete the chain data and the vault record (keys and L1 deployment kept)
 	@$(OBS) down
 	@$(L2) down
 	@scripts/devnet/l2-init.sh --reset
+	@scripts/contracts/vault-deploy.sh --reset
+
+vault-deploy: ## Deploy the vault to the L2 behind a timelock and a proxy; once per L2
+	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/contracts/vault-deploy.sh
+
+vault-verify: ## Check the vault on the L2 against the repository: code, roles, delays, configuration
+	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/contracts/build.sh
+	@go run ./cmd/vault-verify
+
+vault-reset: ## Forget the vault deployment and keep its keys, for a new L2
+	@scripts/contracts/vault-deploy.sh --reset
 
 obs-up: ## Start Prometheus, Alertmanager and Grafana; needs l1-up and l2-up
 	@scripts/observability/obs-init.sh

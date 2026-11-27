@@ -29,6 +29,31 @@ const GasMarginPercent = 20
 // Send signs a dynamic-fee transaction from key to `to` with value and data, sends it,
 // and waits for a successful receipt.
 func Send(ctx context.Context, client *ethclient.Client, key *ecdsa.PrivateKey, to common.Address, value *big.Int, data []byte) (*types.Receipt, error) {
+	return send(ctx, client, key, &to, value, data)
+}
+
+// ErrNoContract is returned when a creation succeeds but leaves no code at the address.
+var ErrNoContract = errors.New("txsend: no code at the created address")
+
+// Deploy signs and sends a contract creation (creation code followed by the constructor
+// arguments), waits for a successful receipt, and returns it with the new address,
+// checked to hold code.
+func Deploy(ctx context.Context, client *ethclient.Client, key *ecdsa.PrivateKey, data []byte) (*types.Receipt, common.Address, error) {
+	receipt, err := send(ctx, client, key, nil, new(big.Int), data)
+	if err != nil {
+		return receipt, common.Address{}, err
+	}
+	code, err := client.CodeAt(ctx, receipt.ContractAddress, receipt.BlockNumber)
+	if err != nil {
+		return receipt, common.Address{}, fmt.Errorf("txsend: read code at %s: %w", receipt.ContractAddress, err)
+	}
+	if len(code) == 0 {
+		return receipt, common.Address{}, fmt.Errorf("%w %s", ErrNoContract, receipt.ContractAddress)
+	}
+	return receipt, receipt.ContractAddress, nil
+}
+
+func send(ctx context.Context, client *ethclient.Client, key *ecdsa.PrivateKey, to *common.Address, value *big.Int, data []byte) (*types.Receipt, error) {
 	from := crypto.PubkeyToAddress(key.PublicKey)
 	chainID, err := client.ChainID(ctx)
 	if err != nil {
@@ -38,7 +63,7 @@ func Send(ctx context.Context, client *ethclient.Client, key *ecdsa.PrivateKey, 
 	if err != nil {
 		return nil, fmt.Errorf("txsend: read nonce of %s: %w", from, err)
 	}
-	gas, err := client.EstimateGas(ctx, ethereum.CallMsg{From: from, To: &to, Value: value, Data: data})
+	gas, err := client.EstimateGas(ctx, ethereum.CallMsg{From: from, To: to, Value: value, Data: data})
 	if err != nil {
 		return nil, fmt.Errorf("txsend: estimate gas: %w", err)
 	}
@@ -59,7 +84,7 @@ func Send(ctx context.Context, client *ethclient.Client, key *ecdsa.PrivateKey, 
 		GasTipCap: tip,
 		GasFeeCap: new(big.Int).Add(new(big.Int).Mul(head.BaseFee, big.NewInt(2)), tip),
 		Gas:       WithMargin(gas),
-		To:        &to,
+		To:        to,
 		Value:     value,
 		Data:      data,
 	})
