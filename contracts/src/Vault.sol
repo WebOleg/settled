@@ -9,25 +9,22 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Pau
 import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC6372} from "@openzeppelin/contracts/interfaces/IERC6372.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {Time} from "@openzeppelin/contracts/utils/types/Time.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
 import {IVault} from "./interfaces/IVault.sol";
-
-// forge-lint: disable-start(reentrancy-events)
-// The lint flags every event in this contract, including those in functions that make
-// no external call at all (cancelQueued, setTokenConfig, setWithdrawalDelay): it does not
-// see through the ERC-7201 storage accessor. Every event here is emitted before any
-// external call that can change state, and every function that makes one is guarded by
-// nonReentrant (docs/review/vault.md).
 
 /// @title Vault
 /// @notice Holds an exchange's funds on the L2: deposits for exchange accounts, and
 /// withdrawals paid once per id, within a rate limit, with large ones queued. The
 /// specification is docs/design/vault.md; the invariants I1 to I10 named in comments
-/// are defined there.
+/// are defined there. Delays and refills run on the vault's clock, which counts L2
+/// blocks (ERC-6372).
 contract Vault is
     IVault,
+    IERC6372,
     Initializable,
     AccessControlDefaultAdminRulesUpgradeable,
     PausableUpgradeable,
@@ -42,9 +39,10 @@ contract Vault is
     bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
     /// @inheritdoc IVault
     address public constant NATIVE = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
-    /// @notice Bounds of the queue delay: never zero, never more than 30 days.
-    uint64 public constant MIN_WITHDRAWAL_DELAY = 1 minutes;
-    uint64 public constant MAX_WITHDRAWAL_DELAY = 30 days;
+    /// @notice Bounds of the queue delay, in blocks: one minute and 30 days at the L2's
+    /// 2 s block time.
+    uint64 public constant MIN_WITHDRAWAL_DELAY = 30;
+    uint64 public constant MAX_WITHDRAWAL_DELAY = 1_296_000;
 
     /// @dev The rate limit of one token: what it lets out now, as of updatedAt.
     struct Bucket {
@@ -152,7 +150,7 @@ contract Vault is
         w.amount = amount;
 
         if (amount >= config.largeThreshold) {
-            uint64 releaseAt = _now() + $.withdrawalDelay;
+            uint64 releaseAt = clock() + $.withdrawalDelay;
             w.status = WithdrawalStatus.Queued;
             w.releaseAt = releaseAt;
             emit WithdrawalQueued(id, token, to, amount, releaseAt);
@@ -171,10 +169,7 @@ contract Vault is
         VaultStorage storage $ = _vault();
         Withdrawal storage w = $.withdrawals[id];
         if (w.status != WithdrawalStatus.Queued) revert WithdrawalNotQueued(id, w.status);
-        // Block time is fixed by derivation on the L2 and cannot be moved by the sequencer
-        // (see _now).
-        // forge-lint: disable-next-line(block-timestamp)
-        if (_now() < w.releaseAt) revert WithdrawalNotReleased(id, w.releaseAt);
+        if (clock() < w.releaseAt) revert WithdrawalNotReleased(id, w.releaseAt);
         address token = w.token;
         if (!$.tokens[token].allowed) revert TokenNotAllowed(token);
 
@@ -221,7 +216,7 @@ contract Vault is
         // not refill it, and a new token starts empty.
         uint128 level = SafeCast.toUint128(_available($, token));
         if (level > config.capacity) level = config.capacity;
-        $.buckets[token] = Bucket({level: level, updatedAt: _now()});
+        $.buckets[token] = Bucket({level: level, updatedAt: clock()});
         $.tokens[token] = config;
         emit TokenConfigured(token, config);
     }
@@ -281,6 +276,20 @@ contract Vault is
         return _vault().depositCount;
     }
 
+    /// @notice The vault's clock: the L2 block number. A block number cannot be set by
+    /// whoever produces the block, unlike its timestamp, and on an OP Stack L2 a new
+    /// block comes every 2 s, which vault-verify checks on the devnet. The clock only
+    /// moves forward, so elapsed blocks never underflow.
+    /// @inheritdoc IERC6372
+    function clock() public view returns (uint48) {
+        return Time.blockNumber();
+    }
+
+    /// @inheritdoc IERC6372
+    function CLOCK_MODE() external pure returns (string memory) {
+        return "mode=blocknumber&from=default";
+    }
+
     // Internal
 
     /// @dev One key holds one of the roles that move or stop funds, and the admin holds
@@ -305,12 +314,12 @@ contract Vault is
         emit WithdrawalDelaySet(delay);
     }
 
-    /// @dev The bucket refills at capacity / refillPeriod per second up to capacity (I4).
+    /// @dev The bucket refills at capacity / refillPeriod per block up to capacity (I4).
     function _available(VaultStorage storage $, address token) private view returns (uint256) {
         TokenConfig memory config = $.tokens[token];
         if (!config.allowed) return 0;
         Bucket memory bucket = $.buckets[token];
-        uint256 refill = uint256(_now() - bucket.updatedAt) * config.capacity / config.refillPeriod;
+        uint256 refill = uint256(clock() - bucket.updatedAt) * config.capacity / config.refillPeriod;
         uint256 level = bucket.level + refill;
         return level > config.capacity ? config.capacity : level;
     }
@@ -318,7 +327,7 @@ contract Vault is
     function _take(VaultStorage storage $, address token, uint256 amount) private {
         uint256 level = _available($, token);
         if (amount > level) revert RateLimited(token, amount, level);
-        $.buckets[token] = Bucket({level: SafeCast.toUint128(level - amount), updatedAt: _now()});
+        $.buckets[token] = Bucket({level: SafeCast.toUint128(level - amount), updatedAt: clock()});
     }
 
     /// @dev Lowers what is owed, then sends (I1, I2).
@@ -347,20 +356,9 @@ contract Vault is
         }
     }
 
-    /// @dev The one source of time in the vault. Delays and refills are measured in block
-    /// time, which the vault can trust here: on an OP Stack L2 every block's timestamp is
-    /// fixed by derivation, genesis time plus the block time per block, so the sequencer
-    /// cannot move it, and vault-verify checks this on the devnet; on Ethereum since the
-    /// Merge it is fixed per slot. Block time only moves forward, so elapsed time never
-    /// underflows. SafeCast makes the uint64 exact rather than assumed.
-    function _now() private view returns (uint64) {
-        return SafeCast.toUint64(block.timestamp);
-    }
-
     function _vault() private pure returns (VaultStorage storage $) {
         assembly ("memory-safe") {
             $.slot := VAULT_STORAGE
         }
     }
 }
-// forge-lint: disable-end(reentrancy-events)

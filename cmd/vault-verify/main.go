@@ -11,7 +11,8 @@
 //     proposer hold no role on the vault; the timelock administers itself;
 //   - the parameters: every delay and the ETH configuration are the ones in
 //     internal/vaultconf, and the vault is not paused;
-//   - what the vault's time source relies on: the L2 block time is fixed by derivation.
+//   - the vault's clock: it counts L2 blocks (ERC-6372), and the L2 makes a block every
+//     2 s, fixed by derivation, so the delays in blocks are the durations intended.
 package main
 
 import (
@@ -103,7 +104,7 @@ func run(ctx context.Context, rpcURL, outDir string) (int, int, error) {
 		return 0, 0, fmt.Errorf("read the L2 genesis: %w", err)
 	}
 	v.report("the record is for this L2", equal(genesis.Hash(), d.L2Genesis), d.L2Genesis.Hex())
-	v.report("L2 block time is fixed by derivation", fixedBlockTime(ctx, client, genesis.Time), "timestamp = genesis + block time x number")
+	v.report(fmt.Sprintf("L2 makes a block every %d s, by derivation", vaultconf.L2BlockTime), fixedBlockTime(ctx, client, genesis.Time), "timestamp = genesis + block time x number")
 
 	// Code.
 	for _, c := range []struct {
@@ -162,15 +163,19 @@ func run(ctx context.Context, rpcURL, outDir string) (int, int, error) {
 	v.role("deployer lacks PROPOSER_ROLE", d.Timelock, vaultconf.ProposerRole, roles[vaultconf.Deployer], false)
 
 	// Parameters.
-	v.number("withdrawal queue delay", d.Vault, "withdrawalDelay()", vaultconf.WithdrawalDelay)
+	v.number("withdrawal queue delay, in blocks", d.Vault, "withdrawalDelay()", vaultconf.WithdrawalDelay)
+	v.report("vault clock mode is the block number", v.clockMode(outDir, d.Vault), vaultconf.ClockMode)
+	n, err := v.clock(outDir, d.Vault)
+	v.report("vault clock reads the L2 block number", err, fmt.Sprintf("block %d", n))
 	v.number("not paused", d.Vault, "paused()", 0)
 	v.tokenConfig(d.Vault)
 	return v.failed, v.total, nil
 }
 
-// fixedBlockTime checks what the vault's time source relies on: the latest L2 block's
-// timestamp is the genesis timestamp plus the rollup's block time per block, so no one
-// chooses it.
+// fixedBlockTime checks what the vault's clock relies on for its delays to be durations:
+// the rollup's block time is the one vaultconf assumes, and the latest L2 block's
+// timestamp is the genesis timestamp plus that block time per block, so blocks come at
+// that pace and no one chooses it.
 func fixedBlockTime(ctx context.Context, client *ethclient.Client, genesisTime uint64) error {
 	raw, err := os.ReadFile(filepath.Join(".devnet", "l2", "deployer", "rollup.json"))
 	if err != nil {
@@ -182,6 +187,9 @@ func fixedBlockTime(ctx context.Context, client *ethclient.Client, genesisTime u
 	if err := json.Unmarshal(raw, &rollup); err != nil || rollup.BlockTime == 0 {
 		return fmt.Errorf("no block_time in rollup.json: %w", errors.Join(err, errors.New("missing")))
 	}
+	if rollup.BlockTime != vaultconf.L2BlockTime {
+		return fmt.Errorf("rollup block time is %d s, the vault's delays assume %d s", rollup.BlockTime, vaultconf.L2BlockTime)
+	}
 	head, err := client.HeaderByNumber(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("read the latest header: %w", err)
@@ -191,6 +199,57 @@ func fixedBlockTime(ctx context.Context, client *ethclient.Client, genesisTime u
 		return fmt.Errorf("block %s has timestamp %d, want %d", head.Number, head.Time, want)
 	}
 	return nil
+}
+
+// clockMode reads the vault's CLOCK_MODE().
+func (v *verifier) clockMode(outDir string, vault common.Address) error {
+	out, err := v.callVault(outDir, vault, "CLOCK_MODE", nil)
+	if err != nil {
+		return err
+	}
+	if mode, ok := out[0].(string); !ok || mode != vaultconf.ClockMode {
+		return fmt.Errorf("CLOCK_MODE() is %v, want %q", out[0], vaultconf.ClockMode)
+	}
+	return nil
+}
+
+// clock reads the vault's clock() in the latest block and checks that it is that block's
+// number.
+func (v *verifier) clock(outDir string, vault common.Address) (uint64, error) {
+	head, err := v.client.HeaderByNumber(v.ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("read the latest header: %w", err)
+	}
+	out, err := v.callVault(outDir, vault, "clock", head.Number)
+	if err != nil {
+		return 0, err
+	}
+	if got, ok := out[0].(*big.Int); !ok || got.Cmp(head.Number) != 0 {
+		return 0, fmt.Errorf("clock() is %v in block %s", out[0], head.Number)
+	}
+	return head.Number.Uint64(), nil
+}
+
+// callVault calls a view of the vault without arguments, in the given block (nil for the
+// latest), and decodes the result with the built ABI.
+func (v *verifier) callVault(outDir string, vault common.Address, method string, block *big.Int) ([]any, error) {
+	a, err := artifact.Load(outDir, "Vault.sol", "Vault")
+	if err != nil {
+		return nil, err
+	}
+	data, err := a.Call(method)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := v.client.CallContract(v.ctx, ethereum.CallMsg{To: &vault, Data: data}, block)
+	if err != nil {
+		return nil, fmt.Errorf("call %s(): %w", method, err)
+	}
+	out, err := a.ABI.Unpack(method, raw)
+	if err != nil || len(out) != 1 {
+		return nil, fmt.Errorf("decode %s(): %w", method, errors.Join(err, errors.New("want one value")))
+	}
+	return out, nil
 }
 
 // addresses reads the role addresses the keys directory lists; verification needs no key.

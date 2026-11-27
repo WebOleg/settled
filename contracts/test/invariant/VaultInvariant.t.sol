@@ -22,7 +22,7 @@ contract VaultInvariantTest is StdInvariant, VaultSetup {
         actions[2] = VaultHandler.executeQueued.selector;
         actions[3] = VaultHandler.cancelQueued.selector;
         actions[4] = VaultHandler.pauseOrUnpause.selector;
-        actions[5] = VaultHandler.warp.selector;
+        actions[5] = VaultHandler.advance.selector;
         actions[6] = VaultHandler.donate.selector;
         actions[7] = VaultHandler.skim.selector;
         actions[8] = VaultHandler.withoutRole.selector;

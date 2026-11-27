@@ -53,18 +53,18 @@ account.
 1. The id must never have been used, in any state. A paid or cancelled id cannot be
    used again; the ledger issues a new one.
 2. If `amount` is at least the token's `largeThreshold`, the withdrawal is queued until
-   `now + withdrawalDelay` and `WithdrawalQueued` is emitted. Nothing is paid.
+   `clock() + withdrawalDelay` and `WithdrawalQueued` is emitted. Nothing is paid.
 3. Otherwise it is paid at once if the rate limit allows: `WithdrawalPaid`.
 
-`executeQueued(id)` pays a queued withdrawal once its time has come; `cancelQueued(id)`
+`executeQueued(id)` pays a queued withdrawal once its release block has come; `cancelQueued(id)`
 lets the guardian stop it before. Both payments, at once or from the queue, need the
 vault not paused and the amount within what deposits account for.
 
 ### Rate limit
 
 One token bucket per token: it holds at most `capacity`, refills at
-`capacity / refillPeriod` per second, and each payment at once takes its amount out.
-Over any span of `t` seconds, payments at once cannot exceed
+`capacity / refillPeriod` per block, and each payment at once takes its amount out.
+Over any span of `t` blocks, payments at once cannot exceed
 `capacity + capacity * t / refillPeriod`. A bucket, unlike a fixed window, cannot be
 doubled by paying at the end of one window and the start of the next. Queued payments
 do not draw on the bucket: they are limited by the delay and the guardian instead.
@@ -120,8 +120,8 @@ record for another L2 is refused.
 |---|---|---|
 | Timelock delay | 60 s | days |
 | Admin handover delay | 300 s | days |
-| Queue delay for large withdrawals | 120 s | hours |
-| ETH rate limit | 10 ETH, refilled over an hour | set from the daily flow |
+| Queue delay for large withdrawals | 60 blocks (2 minutes) | hours |
+| ETH rate limit | 10 ETH, refilled over 1,800 blocks (an hour) | set from the daily flow |
 | ETH queue threshold | 5 ETH | set from the daily flow |
 
 `make vault-verify` ([cmd/vault-verify](../../cmd/vault-verify/main.go)) checks the chain
@@ -131,6 +131,8 @@ implementation's one immutable must be its own address. The proxy must point at 
 implementation, which must refuse to be initialized. Every role must be held by the key
 meant for it and by no other, the timelock must be the vault's only admin with no
 handover pending, and every delay and the ETH configuration must be the values above.
+The vault's clock must report block numbers and read the current one, and the L2 must
+make a block every 2 s by derivation, so the delays in blocks are the durations above.
 [VaultDeploy.t.sol](../../contracts/test/deploy/VaultDeploy.t.sol) runs the same steps
 in forge, the delay and a cancelled proposal included.
 
@@ -142,6 +144,10 @@ implementation, the timelock proposer schedules `upgradeToAndCall` through the t
 and after its delay the timelock executes it. The state stays in the proxy, and
 `make vault-verify` checks code, roles and configuration again. When the vault already
 runs the code of the build, it does nothing.
+
+An upgrade keeps the meaning of the state. The move of the clock from timestamps to
+block numbers did not: every stored release time and refill point would have been read
+as a block number. It was a new deployment, not an upgrade.
 
 ## Invariants
 
@@ -160,8 +166,8 @@ and 128 invariant runs of 64 calls; CI runs 10,000 and 512 of 128.
 | I1 Solvency | For every token, the vault holds at least what it accounts for. |
 | I2 Accounting | For every token, accounted equals all deposits minus all payments. |
 | I3 Paid once | A withdrawal id is paid at most once. Its status only moves None to Paid, None to Queued, Queued to Paid or Queued to Cancelled. |
-| I4 Rate limit | Payments at once of a token over any span of `t` seconds stay within `capacity + capacity * t / refillPeriod`. |
-| I5 Queue | A queued withdrawal is not paid before its release time, and a cancelled one is never paid. |
+| I4 Rate limit | Payments at once of a token over any span of `t` blocks stay within `capacity + capacity * t / refillPeriod`. |
+| I5 Queue | A queued withdrawal is not paid before its release block, and a cancelled one is never paid. |
 | I6 Pause | While paused, no deposit and no payment succeeds. |
 | I7 Roles | Each function succeeds only for the roles in the table above. |
 | I8 Deposit ids | Deposit ids are consecutive from 0, and each deposit is credited exactly the amount the vault received. |
@@ -173,7 +179,7 @@ and 128 invariant runs of 64 calls; CI runs 10,000 and 512 of 128.
 | Concern | How it is handled |
 |---|---|
 | Reentrancy | Every function that moves value is guarded (`ReentrancyGuardTransient`, transient storage, as the first modifier), and changes state and emits its event before any external call. A token deposit pulls the token last and reverts unless exactly the amount arrived. |
-| Time | One source, `_now()`, as a uint64 by `SafeCast`. On an OP Stack L2 a block's timestamp is fixed by derivation (genesis time plus the block time per block), so the sequencer cannot move it; `make vault-verify` checks this on the devnet. If the sequencer stops, chain time resumes where wall time is, and a queued withdrawal can be due the moment blocks resume, with no time for the guardian in between; an alert on `WithdrawalQueued` and the guardian's pause cover it. |
+| Time | The vault's clock (ERC-6372, `clock()` and `CLOCK_MODE()`) is the L2 block number: whoever produces a block chooses its timestamp within the chain's rules, but not its number. Delays and refills are counted in blocks; they are durations because the OP Stack makes a block every 2 s, fixed by derivation, which `make vault-verify` checks against the rollup config. The timelock and the admin handover are OpenZeppelin's and count seconds. If the sequencer stops, it catches up afterwards by making the missed blocks at once, so a queued withdrawal can be due the moment blocks resume, with no time for the guardian in between; an alert on `WithdrawalQueued` and the guardian's pause cover it. |
 | Narrowing | Every conversion to a smaller integer goes through `SafeCast` and reverts rather than truncates. |
 | Tokens that misbehave | `SafeERC20` for tokens that return no value; the received amount is measured, and a difference reverts. Only allowed tokens are accepted. |
 | ETH to a contract that reverts | The payment reverts with `NativeTransferFailed` and the id stays unused, so the ledger can retry or send it elsewhere. |

@@ -16,7 +16,8 @@ import {Vault} from "../../src/Vault.sol";
 contract VaultDeployTest is Test {
     uint256 internal constant TIMELOCK_DELAY = 60;
     uint48 internal constant ADMIN_DELAY = 300;
-    uint64 internal constant WITHDRAWAL_DELAY = 120;
+    // In blocks, as the vault counts time: 2 minutes and an hour at 2 s a block.
+    uint64 internal constant WITHDRAWAL_DELAY = 60;
 
     address internal deployer = makeAddr("deployer");
     address internal operator = makeAddr("operator");
@@ -43,7 +44,7 @@ contract VaultDeployTest is Test {
     }
 
     function config() internal pure returns (IVault.TokenConfig memory) {
-        return IVault.TokenConfig({allowed: true, capacity: 10 ether, refillPeriod: 3600, largeThreshold: 5 ether});
+        return IVault.TokenConfig({allowed: true, capacity: 10 ether, refillPeriod: 1800, largeThreshold: 5 ether});
     }
 
     function test_deploy_timelockIsTheOnlyAdmin() public view {

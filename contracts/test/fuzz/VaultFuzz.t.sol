@@ -56,7 +56,7 @@ contract VaultFuzzTest is VaultSetup {
         vault.withdraw(id, native, recipient, 1);
     }
 
-    /// I4: over any span of t seconds, payments at once stay within
+    /// I4: over any span of t blocks, payments at once stay within
     /// capacity + capacity * t / refillPeriod. Checked for every pair of payments, in
     /// exact integer arithmetic.
     function testFuzz_I4_rateLimitBound(uint256[24] memory amounts, uint256[24] memory gaps) public {
@@ -65,11 +65,11 @@ contract VaultFuzzTest is VaultSetup {
         uint256[24] memory paid;
         uint256 n;
         for (uint256 i; i < amounts.length; i++) {
-            vm.warp(vm.getBlockTimestamp() + bound(gaps[i], 0, 2 * REFILL));
+            vm.roll(vm.getBlockNumber() + bound(gaps[i], 0, 2 * REFILL));
             uint256 amount = bound(amounts[i], 1, LARGE - 1);
             vm.prank(operator);
             try vault.withdraw(bytes32(i + 1), native, recipient, amount) {
-                times[n] = vm.getBlockTimestamp();
+                times[n] = vm.getBlockNumber();
                 paid[n] = amount;
                 n++;
             } catch (bytes memory reason) {
@@ -93,12 +93,12 @@ contract VaultFuzzTest is VaultSetup {
         deposit(native, CAPACITY);
         vm.prank(operator);
         vault.withdraw("w", native, recipient, spent);
-        vm.warp(vm.getBlockTimestamp() + wait);
+        vm.roll(vm.getBlockNumber() + wait);
         uint256 expected = CAPACITY - spent + wait * CAPACITY / REFILL;
         assertEq(vault.available(native), expected > CAPACITY ? CAPACITY : expected);
     }
 
-    /// I5: a queued withdrawal is refused before its release time and paid at it.
+    /// I5: a queued withdrawal is refused before its release block and paid at it.
     function testFuzz_I5_queueHonoursDelay(uint256 amount, uint256 early) public {
         amount = bound(amount, LARGE, 1_000 ether);
         early = bound(early, 1, DELAY);
@@ -106,11 +106,11 @@ contract VaultFuzzTest is VaultSetup {
         vm.prank(operator);
         vault.withdraw("big", native, recipient, amount);
         uint64 releaseAt = vault.withdrawal("big").releaseAt;
-        vm.warp(releaseAt - early);
+        vm.roll(releaseAt - early);
         vm.prank(operator);
         vm.expectRevert(abi.encodeWithSelector(IVault.WithdrawalNotReleased.selector, bytes32("big"), releaseAt));
         vault.executeQueued("big");
-        vm.warp(releaseAt);
+        vm.roll(releaseAt);
         vm.prank(operator);
         vault.executeQueued("big");
         assertEq(recipient.balance, amount);

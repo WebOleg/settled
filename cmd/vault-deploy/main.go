@@ -226,7 +226,7 @@ func configure(ctx context.Context, client *ethclient.Client, proposer *ecdsa.Pr
 	if err != nil {
 		return fmt.Errorf("configure ETH through the timelock: %w", err)
 	}
-	fmt.Printf("configured       ETH: capacity %s ETH per %d s, queued from %s ETH; block %s\n",
+	fmt.Printf("configured       ETH: capacity %s ETH per %d blocks, queued from %s ETH; block %s\n",
 		funding.FormatEther(config.Capacity), config.RefillPeriod, funding.FormatEther(config.LargeThreshold), receipt.BlockNumber)
 	return nil
 }

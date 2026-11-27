@@ -34,7 +34,7 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
     mapping(bytes32 id => bool) public cancelled;
 
     // Payments at once, per token, for the rate limit check.
-    mapping(address token => uint256[]) internal payTimes;
+    mapping(address token => uint256[]) internal payBlocks;
     mapping(address token => uint256[]) internal payAmounts;
 
     // Rules seen broken. All must stay false.
@@ -120,7 +120,7 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
         vm.prank(operator);
         try vault.executeQueued(id) {
             if (paused) succeededWhilePaused = true;
-            if (vm.getBlockTimestamp() < w.releaseAt) paidEarly = true;
+            if (vm.getBlockNumber() < w.releaseAt) paidEarly = true;
             if (cancelled[id]) paidCancelled = true;
             _paid(id, w.token, w.amount);
             calls["execute"]++;
@@ -150,8 +150,12 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
         }
     }
 
-    function warp(uint256 seconds_) external {
-        vm.warp(vm.getBlockTimestamp() + bound(seconds_, 0, 2 hours));
+    /// Moves the chain on by up to two hours of blocks, the clock with it: 2 s a block,
+    /// as on the L2.
+    function advance(uint256 blocks) external {
+        blocks = bound(blocks, 0, 3600);
+        vm.roll(vm.getBlockNumber() + blocks);
+        vm.warp(vm.getBlockTimestamp() + 2 * blocks);
     }
 
     /// Funds sent to the vault without deposit: owed to no one, skimmable.
@@ -225,12 +229,12 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
     /// Every span ending at this payment, against capacity + capacity * t / refillPeriod,
     /// in exact integer arithmetic.
     function _checkRate(address t, uint256 amount) internal {
-        payTimes[t].push(vm.getBlockTimestamp());
+        payBlocks[t].push(vm.getBlockNumber());
         payAmounts[t].push(amount);
         uint256 sum;
-        for (uint256 i = payTimes[t].length; i > 0; i--) {
+        for (uint256 i = payBlocks[t].length; i > 0; i--) {
             sum += payAmounts[t][i - 1];
-            uint256 span = vm.getBlockTimestamp() - payTimes[t][i - 1];
+            uint256 span = vm.getBlockNumber() - payBlocks[t][i - 1];
             if (sum * refillPeriod > uint256(capacity) * refillPeriod + span * capacity) rateLimitExceeded = true;
         }
     }

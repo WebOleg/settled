@@ -10,7 +10,7 @@ import {Vault} from "../../src/Vault.sol";
 /// here: its setup calls cheat codes Halmos does not implement.
 interface Cheats {
     function prank(address sender) external;
-    function warp(uint256 timestamp) external;
+    function roll(uint256 blockNumber) external;
     function deal(address account, uint256 balance) external;
     function assume(bool condition) external;
 }
@@ -31,10 +31,10 @@ contract VaultSymbolicTest {
     address internal constant USER = address(0xA3);
     address internal constant RECIPIENT = address(0xA4);
 
-    // Powers of two: the rate limit multiplies elapsed time by the capacity and divides by
-    // the refill period, and the solver proves products and quotients by powers of two
-    // (shifts) at once, where 100 ether and 3600 s timed out. The properties do not
-    // depend on the values: capacity is about 73.8 ETH, the refill period 68 minutes.
+    // Powers of two: the rate limit multiplies elapsed blocks by the capacity and divides
+    // by the refill period, and the solver proves products and quotients by powers of two
+    // (shifts) at once, where 100 ether and 1800 blocks timed out. The properties do not
+    // depend on the values: capacity is about 73.8 ETH, the refill period 4096 blocks.
     uint128 internal constant CAPACITY = 2 ** 66;
     uint64 internal constant REFILL = 2 ** 12;
     uint128 internal constant LARGE = 2 ** 65;
@@ -42,14 +42,14 @@ contract VaultSymbolicTest {
 
     function setUp() public {
         Vault implementation = new Vault();
-        bytes memory init = abi.encodeCall(Vault.initialize, (ADMIN, 1 days, OPERATOR, GUARDIAN, 1 hours));
+        bytes memory init = abi.encodeCall(Vault.initialize, (ADMIN, 1 days, OPERATOR, GUARDIAN, 1800));
         vault = Vault(payable(address(new ERC1967Proxy(address(implementation), init))));
         native = vault.NATIVE();
         vm.prank(ADMIN);
         vault.setTokenConfig(
             native, IVault.TokenConfig({allowed: true, capacity: CAPACITY, refillPeriod: REFILL, largeThreshold: LARGE})
         );
-        vm.warp(block.timestamp + REFILL);
+        vm.roll(block.number + REFILL);
         vm.deal(USER, DEPOSIT);
         vm.prank(USER);
         vault.deposit{value: DEPOSIT}(native, DEPOSIT, bytes32(uint256(1)));
@@ -80,14 +80,14 @@ contract VaultSymbolicTest {
         assert(address(vault).balance >= vault.accounted(native));
     }
 
-    /// I4: whatever was spent and whatever time passed, a payment at once never takes
+    /// I4: whatever was spent and however many blocks passed, a payment at once never takes
     /// more than the rate limit holds, and takes exactly its amount from it.
     function check_I4_paysWithinAvailable(uint256 spent, uint256 wait, uint256 amount) public {
         vm.assume(spent > 0 && spent < LARGE);
         vm.assume(wait <= 2 ** 22);
         vm.assume(amount < 2 ** 128);
         assert(withdrawAs(OPERATOR, bytes32(uint256(1)), native, spent));
-        vm.warp(block.timestamp + wait);
+        vm.roll(block.number + wait);
         uint256 before = vault.available(native);
         assert(before <= CAPACITY);
         bool ok = withdrawAs(OPERATOR, bytes32(uint256(2)), native, amount);

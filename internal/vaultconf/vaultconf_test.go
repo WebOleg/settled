@@ -34,9 +34,13 @@ func TestValidateRefusesWhatTheVaultRefuses(t *testing.T) {
 }
 
 func TestDelaysAreWithinTheVaultBounds(t *testing.T) {
-	// The vault takes a queue delay from 1 minute to 30 days.
-	if WithdrawalDelay < 60 || WithdrawalDelay > 30*24*3600 {
+	// The vault takes a queue delay from 30 to 1,296,000 blocks (MIN_WITHDRAWAL_DELAY and
+	// MAX_WITHDRAWAL_DELAY): 1 minute to 30 days at the L2's block time.
+	if WithdrawalDelay < 30 || WithdrawalDelay > 1_296_000 {
 		t.Fatalf("withdrawal delay %d outside the vault's bounds", WithdrawalDelay)
+	}
+	if WithdrawalDelay*L2BlockTime != 120 || RefillPeriod*L2BlockTime != 3600 {
+		t.Fatalf("queue %d blocks, refill %d blocks: want 2 minutes and an hour", WithdrawalDelay, RefillPeriod)
 	}
 	if TimelockDelay <= 0 || AdminDelay <= 0 {
 		t.Fatal("delays must be positive")

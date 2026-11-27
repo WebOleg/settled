@@ -7,9 +7,10 @@ L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
 OBS := docker compose -f infra/observability/compose.yaml
 PROM_IMAGE := prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
-# Foundry v1.9.0: the arm64 image of v1.10.0 ships forge, cast and chisel as 434 KB
-# stubs that print nothing and exit 0 (contracts/README.md).
-FOUNDRY_IMAGE := ghcr.io/foundry-rs/foundry:v1.9.0@sha256:3a392c18f9b16e665e932de159fb6fa9ed972c4b4352f2f76a1a8c7ca9b57d39
+# Foundry v1.10.1: the arm64 image of v1.10.0 shipped forge, cast and chisel as 434 KB
+# stubs, and the lint of v1.9.0 counted every assembly block as an external call
+# (contracts/README.md).
+FOUNDRY_IMAGE := ghcr.io/foundry-rs/foundry:v1.10.1@sha256:477ed6a2574fcec250633915433201994a92dc7476697cda02adf684d9b42092
 AM_IMAGE := prom/alertmanager:v0.35.1@sha256:4e3d029e69c7f61dd53a2b31a3dc427a2b81736cffca185c0854075e07969e36
 STEP := $(MAKE) --no-print-directory
 

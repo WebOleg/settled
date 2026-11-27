@@ -21,9 +21,10 @@ abstract contract VaultSetup is Test {
     address internal recipient = makeAddr("recipient");
 
     uint128 internal constant CAPACITY = 100 ether;
-    uint64 internal constant REFILL = 1 hours;
+    // In blocks: an hour and an hour at the L2's 2 s block time.
+    uint64 internal constant REFILL = 1800;
     uint128 internal constant LARGE = 50 ether;
-    uint64 internal constant DELAY = 1 hours;
+    uint64 internal constant DELAY = 1800;
     uint48 internal constant ADMIN_DELAY = 1 days;
 
     function setUpVault() internal {
@@ -39,6 +40,6 @@ abstract contract VaultSetup is Test {
         vault.setTokenConfig(native, config);
         vault.setTokenConfig(address(token), config);
         vm.stopPrank();
-        vm.warp(vm.getBlockTimestamp() + REFILL);
+        vm.roll(vm.getBlockNumber() + REFILL);
     }
 }

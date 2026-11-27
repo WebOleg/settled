@@ -44,10 +44,20 @@ const (
 	TimelockDelay = 60
 	// AdminDelay is how long a new admin waits before it can accept the role.
 	AdminDelay = 300
-	// WithdrawalDelay is how long a large withdrawal waits in the queue.
-	WithdrawalDelay = 120
-	// RefillPeriod is the seconds an empty rate limit takes to refill.
-	RefillPeriod = 3600
+	// WithdrawalDelay is how long a large withdrawal waits in the queue, in L2 blocks
+	// (the vault's clock): 2 minutes.
+	WithdrawalDelay = 60
+	// RefillPeriod is how many L2 blocks an empty rate limit takes to refill: an hour.
+	RefillPeriod = 1800
+)
+
+// The vault's clock (ERC-6372) counts L2 blocks, and its block counts are durations
+// only at the L2's block time, which vault-verify checks against the rollup config.
+const (
+	// ClockMode is what the vault's CLOCK_MODE() returns.
+	ClockMode = "mode=blocknumber&from=default"
+	// L2BlockTime is the seconds between L2 blocks.
+	L2BlockTime = 2
 )
 
 // Native is the address the vault uses for ETH.
@@ -79,7 +89,7 @@ func (c TokenConfig) Validate() error {
 		return errors.New("vaultconf: an allowed token needs a capacity and a threshold")
 	}
 	if c.Capacity.Sign() <= 0 || c.RefillPeriod == 0 || c.LargeThreshold.Sign() <= 0 || c.LargeThreshold.Cmp(c.Capacity) > 0 {
-		return fmt.Errorf("vaultconf: capacity %s, refill %d s, threshold %s: the threshold must be positive and at most the capacity", c.Capacity, c.RefillPeriod, c.LargeThreshold)
+		return fmt.Errorf("vaultconf: capacity %s, refill %d blocks, threshold %s: the threshold must be positive and at most the capacity", c.Capacity, c.RefillPeriod, c.LargeThreshold)
 	}
 	return nil
 }

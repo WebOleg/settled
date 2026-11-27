@@ -24,7 +24,7 @@ the host.
 
 | Tool | Version | Pinned by |
 |---|---|---|
-| Foundry | v1.9.0 | image digest in the [Makefile](../Makefile) |
+| Foundry | v1.10.1 | image digest in the [Makefile](../Makefile) |
 | solc | 0.8.39 | [foundry.toml](foundry.toml); downloaded and checked by forge |
 | OpenZeppelin Contracts | v5.7.0 | git submodule at the tag's commit |
 | OpenZeppelin Contracts Upgradeable | v5.7.0 | git submodule at the tag's commit |
@@ -33,7 +33,7 @@ the host.
 
 | Choice | Reason |
 |---|---|
-| Foundry v1.9.0, not v1.10.0 | In the arm64 image of v1.10.0, `forge`, `cast` and `chisel` are 434 KB files that print nothing and exit 0; in v1.9.0 `forge` is 110 MB and works. The amd64 image of v1.10.0 is fine, so CI alone would not have noticed. The check therefore requires an artifact for every source file, not only exit code 0. |
+| Foundry v1.10.1 | forge lint in v1.9.0 counts every inline assembly block as an external call, so it flags every event behind OpenZeppelin's storage accessors ([docs/review/vault.md](../docs/review/vault.md)); v1.10.0 fixed that, but its arm64 image ships `forge`, `cast` and `chisel` as 434 KB files that print nothing and exit 0. In v1.10.1 `forge` is 114 MB on arm64 and 129 MB on amd64 and works on both. CI runs amd64 only and would not notice a broken arm64 image, so the check requires an artifact for every source file, not only exit code 0. |
 | solc 0.8.39 | The latest release, and the only recent one with no known bug in the Solidity bug list; 0.8.38 has two storage copy bugs. Every file uses this exact version. |
 | `evm_version = "cancun"` | The newest opcodes the contracts need: transient storage, for the reentrancy guard. |
 | No metadata hash in the bytecode | The same source always gives the same bytes, so a deployed contract can be compared with a local build. |

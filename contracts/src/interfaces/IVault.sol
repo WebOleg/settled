@@ -20,7 +20,7 @@ interface IVault {
     /// @notice How the vault treats one token.
     /// @param allowed Deposits and withdrawals of the token are accepted.
     /// @param capacity Most the rate limit lets out at once, in token units.
-    /// @param refillPeriod Seconds for an empty rate limit to refill to capacity.
+    /// @param refillPeriod Blocks for an empty rate limit to refill to capacity.
     /// @param largeThreshold A withdrawal of at least this amount is queued, not paid at
     /// once. At most capacity, so every smaller amount can pass the rate limit.
     struct TokenConfig {
@@ -46,7 +46,7 @@ interface IVault {
     );
     /// @notice A withdrawal paid, at once or from the queue.
     event WithdrawalPaid(bytes32 indexed id, address indexed token, address indexed to, uint256 amount);
-    /// @notice A large withdrawal queued; it can be paid from releaseAt on.
+    /// @notice A large withdrawal queued; it can be paid from block releaseAt on.
     event WithdrawalQueued(
         bytes32 indexed id, address indexed token, address indexed to, uint256 amount, uint64 releaseAt
     );
@@ -54,7 +54,7 @@ interface IVault {
     event WithdrawalCancelled(bytes32 indexed id, address indexed by);
     /// @notice The configuration of a token set or changed.
     event TokenConfigured(address indexed token, TokenConfig config);
-    /// @notice The queue delay for large withdrawals set or changed.
+    /// @notice The queue delay for large withdrawals, in blocks, set or changed.
     event WithdrawalDelaySet(uint64 delay);
     /// @notice Tokens held beyond what deposits account for, sent out.
     event Skimmed(address indexed token, address indexed to, uint256 amount);

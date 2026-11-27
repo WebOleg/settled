@@ -34,9 +34,10 @@ contract VaultTest is Test {
 
     bytes32 internal constant ACCOUNT = keccak256("exchange-account-1");
     uint128 internal constant CAPACITY = 100 ether;
-    uint64 internal constant REFILL = 1 hours;
+    // In blocks: an hour and an hour at the L2's 2 s block time.
+    uint64 internal constant REFILL = 1800;
     uint128 internal constant LARGE = 50 ether;
-    uint64 internal constant DELAY = 1 hours;
+    uint64 internal constant DELAY = 1800;
     uint48 internal constant ADMIN_DELAY = 1 days;
 
     function setUp() public {
@@ -49,7 +50,7 @@ contract VaultTest is Test {
         vault.setTokenConfig(address(token), config());
         vm.stopPrank();
         // Buckets start empty and fill over one refill period.
-        vm.warp(vm.getBlockTimestamp() + REFILL);
+        vm.roll(vm.getBlockNumber() + REFILL);
 
         vm.deal(user, 1_000 ether);
         token.mint(user, 1_000 ether);
@@ -255,12 +256,12 @@ contract VaultTest is Test {
         withdraw("c", native, 3 ether);
 
         // A tenth of the refill period refills a tenth of the capacity.
-        vm.warp(vm.getBlockTimestamp() + REFILL / 10);
+        vm.roll(vm.getBlockNumber() + REFILL / 10);
         assertEq(vault.available(native), 12 ether);
         withdraw("c", native, 3 ether);
 
         // Never above capacity.
-        vm.warp(vm.getBlockTimestamp() + 10 * REFILL);
+        vm.roll(vm.getBlockNumber() + 10 * REFILL);
         assertEq(vault.available(native), CAPACITY);
     }
 
@@ -280,7 +281,7 @@ contract VaultTest is Test {
         ReenteringToken re = new ReenteringToken();
         vm.prank(admin);
         vault.setTokenConfig(address(re), config());
-        vm.warp(vm.getBlockTimestamp() + REFILL);
+        vm.roll(vm.getBlockNumber() + REFILL);
         re.mint(user, 10 ether);
         vm.startPrank(user);
         re.approve(address(vault), 10 ether);
@@ -310,7 +311,7 @@ contract VaultTest is Test {
 
     function test_withdraw_largeIsQueuedNotPaid() public {
         depositNative(100 ether);
-        uint64 releaseAt = uint64(vm.getBlockTimestamp()) + DELAY;
+        uint64 releaseAt = uint64(vm.getBlockNumber()) + DELAY;
         vm.expectEmit(address(vault));
         emit IVault.WithdrawalQueued("big", native, recipient, LARGE, releaseAt);
         assertEq(uint8(withdraw("big", native, LARGE)), uint8(IVault.WithdrawalStatus.Queued));
@@ -332,7 +333,7 @@ contract VaultTest is Test {
         vm.expectRevert(abi.encodeWithSelector(IVault.WithdrawalNotReleased.selector, bytes32("big"), releaseAt));
         vault.executeQueued("big");
 
-        vm.warp(releaseAt);
+        vm.roll(releaseAt);
         vm.expectEmit(address(vault));
         emit IVault.WithdrawalPaid("big", native, recipient, 60 ether);
         vm.prank(operator);
@@ -356,7 +357,7 @@ contract VaultTest is Test {
         vm.prank(guardian);
         vault.cancelQueued("big");
 
-        vm.warp(vm.getBlockTimestamp() + DELAY);
+        vm.roll(vm.getBlockNumber() + DELAY);
         vm.prank(operator);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -394,7 +395,7 @@ contract VaultTest is Test {
         withdraw("big", address(token), 60 ether);
         vm.prank(admin);
         vault.setTokenConfig(address(token), IVault.TokenConfig(false, 0, 0, 0));
-        vm.warp(vm.getBlockTimestamp() + DELAY);
+        vm.roll(vm.getBlockNumber() + DELAY);
         vm.prank(operator);
         vm.expectRevert(abi.encodeWithSelector(IVault.TokenNotAllowed.selector, address(token)));
         vault.executeQueued("big");
@@ -414,7 +415,7 @@ contract VaultTest is Test {
         vault.deposit{value: 1}(native, 1, ACCOUNT);
         vm.expectRevert(paused);
         withdraw("w1", native, 1 ether);
-        vm.warp(vm.getBlockTimestamp() + DELAY);
+        vm.roll(vm.getBlockNumber() + DELAY);
         vm.prank(operator);
         vm.expectRevert(paused);
         vault.executeQueued("big");
@@ -493,17 +494,31 @@ contract VaultTest is Test {
         }
     }
 
+    function test_clock_isTheBlockNumber() public {
+        assertEq(vault.CLOCK_MODE(), "mode=blocknumber&from=default");
+        assertEq(vault.clock(), vm.getBlockNumber());
+        // Time alone does not move the clock; blocks do.
+        vm.warp(vm.getBlockTimestamp() + 1 days);
+        assertEq(vault.clock(), vm.getBlockNumber());
+        vm.roll(vm.getBlockNumber() + 7);
+        assertEq(vault.clock(), vm.getBlockNumber());
+    }
+
     function test_setWithdrawalDelay_bounds() public {
+        uint64 min = vault.MIN_WITHDRAWAL_DELAY();
+        uint64 max = vault.MAX_WITHDRAWAL_DELAY();
         vm.startPrank(admin);
         vm.expectRevert(IVault.InvalidConfig.selector);
         vault.setWithdrawalDelay(0);
         vm.expectRevert(IVault.InvalidConfig.selector);
-        vault.setWithdrawalDelay(31 days);
+        vault.setWithdrawalDelay(min - 1);
+        vm.expectRevert(IVault.InvalidConfig.selector);
+        vault.setWithdrawalDelay(max + 1);
         vm.expectEmit(address(vault));
-        emit IVault.WithdrawalDelaySet(2 hours);
-        vault.setWithdrawalDelay(2 hours);
+        emit IVault.WithdrawalDelaySet(3600);
+        vault.setWithdrawalDelay(3600);
         vm.stopPrank();
-        assertEq(vault.withdrawalDelay(), 2 hours);
+        assertEq(vault.withdrawalDelay(), 3600);
     }
 
     // Roles kept apart
