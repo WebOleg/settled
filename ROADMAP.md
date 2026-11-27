@@ -10,7 +10,7 @@ when its "done when" line is true and is shown by something in the repository.
 | 2. Output proposals | op-proposer posts the L2 state to the L1, and every proposal is recomputed independently | A withdrawal started on the L2 is proven and finalized on the L1 against a game the proposer created | Done |
 | 3. Observability | Metrics, dashboards and alerts for the chain | Every alert has a documented meaning, a threshold and a runbook | Done |
 | 4. Contracts | A small set of audited-style Solidity contracts | Unit, fuzz and invariant tests pass; a written review lists every finding | Done |
-| 5. Bridge and ledger | A Go service that moves funds between L1 and L2 | Deposits credit only at finality, reorgs reverse in the ledger, a withdrawal is paid once under retries and races | Not started |
+| 5. Bridge and ledger | A Go service that moves funds between L1 and L2 | Deposits credit only at finality, reorgs reverse in the ledger, a withdrawal is paid once under retries and races | In progress |
 | 6. Kubernetes and end-to-end CI | The same system on local Kubernetes, tested end to end in CI | CI starts the devnet and runs the end-to-end tests on every push | Not started |
 | 7. Incident drills | Planned failures with runbooks and post-mortems | Each drill has a runbook and a post-mortem, including a verifier rebuilt from the L1 with peer-to-peer off, a wrong proposal blacklisted by the guardian, and a transaction forced in through the L1 | Not started |
 | 8. Upgrades | Node and contract upgrades, a scheduled hard fork | An upgrade and a hard fork activation are done on the devnet with a written checklist | Not started |

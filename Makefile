@@ -6,6 +6,8 @@ SHELL := /bin/bash
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
 OBS := docker compose -f infra/observability/compose.yaml
+# PostgreSQL 18.7, the ledger's database (docs/design/ledger.md).
+POSTGRES_IMAGE := postgres:18.7-alpine@sha256:0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71
 PROM_IMAGE := prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
 # Foundry v1.10.1: the arm64 image of v1.10.0 shipped forge, cast and chisel as 434 KB
 # stubs, and the lint of v1.9.0 counted every assembly block as an external call
@@ -77,12 +79,8 @@ contracts-snapshot: ## Record the gas of the unit tests in contracts/.gas-snapsh
 contracts-slither-record: ## Record Slither's findings in contracts/slither.db.json, once each is reviewed
 	@scripts/contracts/slither.sh --record
 
-check-go: ## gofmt, go vet and go test on every Go package
-	@files="$$(gofmt -l cmd internal)"; \
-	if [ -n "$$files" ]; then echo "check-go: not formatted with gofmt:"; echo "$$files"; exit 1; fi
-	@go vet ./...
-	@go test -count=1 ./...
-	@echo "check-go: ok"
+check-go: ## gofmt, go vet and go test on every Go package; the ledger's tests against a throwaway PostgreSQL
+	@POSTGRES_IMAGE=$(POSTGRES_IMAGE) scripts/check-go.sh
 
 l1-up: ## Start the local L1; creates its genesis on first run
 	@scripts/devnet/l1-init.sh
