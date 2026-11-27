@@ -42,6 +42,10 @@ type deposit struct {
 	account common.Hash
 	amount  *big.Int
 	tx      common.Hash
+	// A payment or a cancellation instead, of withdrawal id, to recipient.
+	kind Kind
+	id   common.Hash
+	to   common.Address
 }
 
 func newFakeChain(n int) *fakeChain {
@@ -65,11 +69,17 @@ func (c *fakeChain) mineLocked(ds ...deposit) Header {
 		Hash: crypto.Keccak256Hash([]byte(fmt.Sprintf("block %d salt %d", parent.Number+1, c.salt)))}
 	c.blocks = append(c.blocks, h)
 	for i, d := range ds {
-		c.events[h.Hash] = append(c.events[h.Hash], Event{
-			Block: h.Number, BlockHash: h.Hash, TxHash: d.tx, LogIndex: uint(i),
+		e := Event{Kind: KindDeposit, Block: h.Number, BlockHash: h.Hash, TxHash: d.tx, LogIndex: uint(i),
 			DepositID: big.NewInt(int64(h.Number*10 + uint64(i))), Token: Native, Sender: common.HexToAddress("0x5e"),
-			Account: d.account, Amount: d.amount,
-		})
+			Account: d.account, Amount: d.amount}
+		switch d.kind {
+		case KindPaid:
+			e = Event{Kind: KindPaid, Block: h.Number, BlockHash: h.Hash, TxHash: d.tx, LogIndex: uint(i),
+				WithdrawalID: d.id, Token: Native, Recipient: d.to, Amount: d.amount}
+		case KindCancelled:
+			e = Event{Kind: KindCancelled, Block: h.Number, BlockHash: h.Hash, TxHash: d.tx, LogIndex: uint(i), WithdrawalID: d.id}
+		}
+		c.events[h.Hash] = append(c.events[h.Hash], e)
 	}
 	return h
 }
@@ -225,7 +235,7 @@ func tx(s string) common.Hash { return crypto.Keccak256Hash([]byte(s)) }
 
 func TestStep_creditsADepositOnlyOnceFinal(t *testing.T) {
 	f := newFixture(t, 5)
-	f.chain.mine(deposit{alice, eth(3), tx("a")})
+	f.chain.mine(deposit{account: alice, amount: eth(3), tx: tx("a")})
 	f.chain.mine()
 	f.chain.finalize(4)
 	rep := f.step(t)
@@ -249,7 +259,7 @@ func TestStep_creditsADepositOnlyOnceFinal(t *testing.T) {
 func TestStep_aReorganisationVoidsAHeldDeposit(t *testing.T) {
 	f := newFixture(t, 5)
 	f.chain.mine()
-	f.chain.mine(deposit{alice, eth(2), tx("a")})
+	f.chain.mine(deposit{account: alice, amount: eth(2), tx: tx("a")})
 	f.chain.finalize(5)
 	f.step(t)
 	f.balance(t, alice, 2, 0)
@@ -271,11 +281,11 @@ func TestStep_aReorganisationVoidsAHeldDeposit(t *testing.T) {
 
 func TestStep_aDepositMovedToAnotherBlockIsCreditedOnce(t *testing.T) {
 	f := newFixture(t, 5)
-	f.chain.mine(deposit{alice, eth(4), tx("a")})
+	f.chain.mine(deposit{account: alice, amount: eth(4), tx: tx("a")})
 	f.step(t)
 	f.balance(t, alice, 4, 0)
 
-	f.chain.reorg(1, 2, deposit{alice, eth(4), tx("a")}) // the same transaction in the new block 6
+	f.chain.reorg(1, 2, deposit{account: alice, amount: eth(4), tx: tx("a")}) // the same transaction in the new block 6
 	rep := f.step(t)
 	if rep.Voided != 1 || rep.Seen != 1 {
 		t.Fatalf("after the reorganisation: %+v, want the old one voided and the new one seen", rep)
@@ -294,7 +304,7 @@ func TestStep_aShorterChainVoidsWhatItLost(t *testing.T) {
 	f := newFixture(t, 5)
 	f.chain.mine()
 	f.chain.mine()
-	f.chain.mine(deposit{bob, eth(1), tx("b")})
+	f.chain.mine(deposit{account: bob, amount: eth(1), tx: tx("b")})
 	f.step(t)
 	f.balance(t, bob, 1, 0)
 	f.chain.reorg(3, 1) // head goes from 8 to 6
@@ -311,9 +321,9 @@ func TestStep_finalBlocksAreReadInRanges(t *testing.T) {
 	for i := range 40 {
 		switch i {
 		case 3:
-			f.chain.mine(deposit{alice, eth(1), tx("a1")}, deposit{bob, eth(2), tx("b1")})
+			f.chain.mine(deposit{account: alice, amount: eth(1), tx: tx("a1")}, deposit{account: bob, amount: eth(2), tx: tx("b1")})
 		case 25:
-			f.chain.mine(deposit{alice, eth(5), tx("a2")})
+			f.chain.mine(deposit{account: alice, amount: eth(5), tx: tx("a2")})
 		default:
 			f.chain.mine()
 		}
@@ -338,7 +348,7 @@ func TestStep_finalBlocksAreReadInRanges(t *testing.T) {
 
 func TestStep_aFinalBlockLeavingTheChainStopsTheIndexer(t *testing.T) {
 	f := newFixture(t, 5)
-	f.chain.mine(deposit{alice, eth(3), tx("a")})
+	f.chain.mine(deposit{account: alice, amount: eth(3), tx: tx("a")})
 	f.chain.mine()
 	f.chain.finalize(6)
 	f.step(t)
@@ -355,7 +365,7 @@ func TestStep_aFinalBlockLeavingTheChainStopsTheIndexer(t *testing.T) {
 
 func TestStep_aNodeErrorChangesNothing(t *testing.T) {
 	f := newFixture(t, 5)
-	f.chain.mine(deposit{alice, eth(1), tx("a")})
+	f.chain.mine(deposit{account: alice, amount: eth(1), tx: tx("a")})
 	f.chain.failNext = errors.New("node down")
 	if _, err := f.indexer().Step(context.Background()); err == nil {
 		t.Fatal("a step with the node down succeeded")
@@ -398,11 +408,11 @@ func TestStep_twoIndexersAtOnceCountEachDepositOnce(t *testing.T) {
 		if i%3 == 0 {
 			account = bob
 		}
-		f.chain.mine(deposit{account, eth(1), tx(fmt.Sprint(i))})
+		f.chain.mine(deposit{account: account, amount: eth(1), tx: tx(fmt.Sprint(i))})
 		want[account]++
 		if i%10 == 9 {
 			// The last deposit is dropped and comes back in the replacement block.
-			f.chain.reorg(1, 1, deposit{account, eth(1), tx(fmt.Sprint(i))})
+			f.chain.reorg(1, 1, deposit{account: account, amount: eth(1), tx: tx(fmt.Sprint(i))})
 		}
 		if i%5 == 4 {
 			head, _ := f.chain.Latest(ctx)
@@ -449,5 +459,242 @@ func TestDecode_readsTheDepositedLog(t *testing.T) {
 		if _, err := Decode(bad); err == nil {
 			t.Fatalf("%s: decoded", name)
 		}
+	}
+}
+
+var recipient = common.HexToAddress("0xbeef")
+
+// request records a withdrawal and its hold as internal/withdrawals does.
+func (f *fixture) request(t *testing.T, id common.Hash, account common.Hash, n int64) {
+	t.Helper()
+	ctx := context.Background()
+	v, err := f.l.CreateAccount(ctx, "vault:ETH", "ETH", ledger.CreditsWithinDebits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := f.l.CreateAccount(ctx, CustomerAccount(account, "ETH"), "ETH", ledger.DebitsWithinCredits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := "withdrawal:" + id.Hex()
+	if _, err := f.owner.Exec(ctx, `INSERT INTO withdrawals (id, vault, request_key, account, token, recipient, amount, ledger_key, status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7::numeric, $8, 'onchain')`, id.Bytes(), vault.Bytes(), id.Hex(), account.Bytes(),
+		Native.Bytes(), recipient.Bytes(), eth(n).String(), key); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.l.Transfer(ctx, ledger.Transfer{Key: key, Kind: ledger.Pending, Debit: c.ID, Credit: v.ID, Amount: eth(n), Code: "withdrawal"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (f *fixture) withdrawalStatus(t *testing.T, id common.Hash) string {
+	t.Helper()
+	var s string
+	if err := f.owner.QueryRow(context.Background(), "SELECT status FROM withdrawals WHERE id = $1", id.Bytes()).Scan(&s); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// owned is what the ledger owes the customer after holds: posted credits less debits.
+func (f *fixture) owned(t *testing.T, name string, held, owned int64) {
+	t.Helper()
+	a, err := f.l.Account(context.Background(), name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := new(big.Int).Sub(a.CreditsPosted, a.DebitsPosted)
+	if a.DebitsPending.Cmp(eth(held)) != 0 || got.Cmp(eth(owned)) != 0 {
+		t.Fatalf("%s: held %s, owned %s wei; want %d and %d ETH", name, a.DebitsPending, got, held, owned)
+	}
+}
+
+// vaultHolds checks what the ledger holds for the vault: posted debits less credits.
+func (f *fixture) vaultHolds(t *testing.T, n int64) {
+	t.Helper()
+	a, err := f.l.Account(context.Background(), "vault:ETH")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := new(big.Int).Sub(a.DebitsPosted, a.CreditsPosted); got.Cmp(eth(n)) != 0 {
+		t.Fatalf("the ledger holds %s wei for the vault, want %d ETH", got, n)
+	}
+}
+
+func TestStep_aFinalPaymentSettlesItsWithdrawal(t *testing.T) {
+	f := newFixture(t, 5)
+	f.chain.mine(deposit{account: alice, amount: eth(5), tx: tx("d")})
+	f.chain.finalize(6)
+	f.step(t)
+	id := common.HexToHash("0x1d")
+	f.request(t, id, alice, 2)
+	f.owned(t, CustomerAccount(alice, "ETH"), 2, 5)
+
+	f.chain.mine(deposit{kind: KindPaid, id: id, to: recipient, amount: eth(2), tx: tx("p")})
+	if rep := f.step(t); rep.Settled != 0 {
+		t.Fatalf("before finality: %+v, want nothing settled", rep)
+	}
+	f.owned(t, CustomerAccount(alice, "ETH"), 2, 5)
+	f.chain.finalize(7)
+	if rep := f.step(t); rep.Settled != 1 || rep.Suspense != 0 {
+		t.Fatalf("after finality: %+v, want 1 settled", rep)
+	}
+	if s := f.withdrawalStatus(t, id); s != "settled" {
+		t.Fatalf("withdrawal %s, want settled", s)
+	}
+	f.owned(t, CustomerAccount(alice, "ETH"), 0, 3)
+	f.vaultHolds(t, 3)
+	f.clean(t)
+}
+
+func TestStep_aPaymentNobodyRequestedGoesToSuspense(t *testing.T) {
+	f := newFixture(t, 5)
+	f.chain.mine(deposit{account: alice, amount: eth(5), tx: tx("d")})
+	f.chain.mine(deposit{kind: KindPaid, id: common.HexToHash("0xbad"), to: recipient, amount: eth(1), tx: tx("p")})
+	f.chain.finalize(7)
+	if rep := f.step(t); rep.Suspense != 1 {
+		t.Fatalf("step: %+v, want 1 payment to suspense", rep)
+	}
+	f.owned(t, CustomerAccount(alice, "ETH"), 0, 5)
+	f.vaultHolds(t, 4) // as the vault on chain: 5 in, 1 out
+	s, err := f.l.Account(context.Background(), SuspenseAccount("ETH"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.DebitsPosted.Cmp(eth(1)) != 0 {
+		t.Fatalf("suspense holds %s wei, want 1 ETH", s.DebitsPosted)
+	}
+	f.clean(t)
+}
+
+func TestStep_aFinalCancellationReleasesTheHold(t *testing.T) {
+	f := newFixture(t, 5)
+	f.chain.mine(deposit{account: alice, amount: eth(9), tx: tx("d")})
+	f.chain.finalize(6)
+	f.step(t)
+	id := common.HexToHash("0x1d")
+	f.request(t, id, alice, 6)
+	f.chain.mine(deposit{kind: KindCancelled, id: id, tx: tx("c")})
+	f.chain.finalize(7)
+	if rep := f.step(t); rep.Cancelled != 1 {
+		t.Fatalf("step: %+v, want 1 cancelled", rep)
+	}
+	if s := f.withdrawalStatus(t, id); s != "cancelled" {
+		t.Fatalf("withdrawal %s, want cancelled", s)
+	}
+	f.owned(t, CustomerAccount(alice, "ETH"), 0, 9)
+	f.vaultHolds(t, 9)
+	f.clean(t)
+}
+
+func TestStep_aPaymentThatLeftTheChainSettlesNothing(t *testing.T) {
+	f := newFixture(t, 5)
+	f.chain.mine(deposit{account: alice, amount: eth(5), tx: tx("d")})
+	f.chain.finalize(6)
+	f.step(t)
+	id := common.HexToHash("0x1d")
+	f.request(t, id, alice, 2)
+	f.chain.mine(deposit{kind: KindPaid, id: id, to: recipient, amount: eth(2), tx: tx("p")})
+	f.step(t)
+	f.chain.reorg(1, 2) // the payment's block is gone
+	f.chain.finalize(8)
+	rep := f.step(t)
+	if rep.Settled != 0 || rep.Fork == nil {
+		t.Fatalf("after the reorganisation: %+v, want a fork and nothing settled", rep)
+	}
+	if s := f.withdrawalStatus(t, id); s != "onchain" {
+		t.Fatalf("withdrawal %s, want it still open for the payer", s)
+	}
+	f.owned(t, CustomerAccount(alice, "ETH"), 2, 5)
+	var voided int
+	if err := f.owner.QueryRow(context.Background(), "SELECT count(*) FROM withdrawal_events WHERE status = 'voided'").Scan(&voided); err != nil || voided != 1 {
+		t.Fatalf("%d payment events voided, %v; want 1", voided, err)
+	}
+	f.clean(t)
+}
+
+func TestDecode_readsPaymentsAndCancellations(t *testing.T) {
+	id := common.HexToHash("0x1d")
+	paid := types.Log{Topics: []common.Hash{TopicPaid, id, common.BytesToHash(Native.Bytes()), common.BytesToHash(recipient.Bytes())},
+		Data: common.BigToHash(eth(2)).Bytes(), BlockNumber: 9}
+	e, err := Decode(paid)
+	if err != nil || e.Kind != KindPaid || e.WithdrawalID != id || e.Recipient != recipient || e.Amount.Cmp(eth(2)) != 0 {
+		t.Fatalf("paid: %+v, %v", e, err)
+	}
+	cancelled := types.Log{Topics: []common.Hash{TopicCancelled, id, common.BytesToHash(common.HexToAddress("0x9").Bytes())}, BlockNumber: 9}
+	e, err = Decode(cancelled)
+	if err != nil || e.Kind != KindCancelled || e.WithdrawalID != id {
+		t.Fatalf("cancelled: %+v, %v", e, err)
+	}
+	if _, err := Decode(types.Log{Topics: []common.Hash{TopicPaid, id}, Data: paid.Data}); err == nil {
+		t.Fatal("a short WithdrawalPaid decoded")
+	}
+}
+
+// A version that read only deposits, then one that reads withdrawals too, from the
+// block after the tip it found: the final blocks below are backfilled for withdrawals
+// alone, the ones not yet final once they are, and every payment is applied once.
+func TestStep_aStreamAddedLaterIsBackfilledOnce(t *testing.T) {
+	f := newFixture(t, 5)
+	ctx := context.Background()
+	f.chain.mine(deposit{account: alice, amount: eth(9), tx: tx("d")})                                              // 6
+	f.chain.mine(deposit{kind: KindPaid, id: common.HexToHash("0x1"), to: recipient, amount: eth(1), tx: tx("p1")}) // 7
+	f.chain.mine()                                                                                                  // 8
+	f.chain.mine(deposit{kind: KindPaid, id: common.HexToHash("0x2"), to: recipient, amount: eth(2), tx: tx("p2")}) // 9
+	f.chain.mine()                                                                                                  // 10
+	f.chain.finalize(7)
+	old := f.indexer()
+	old.Streams = []string{StreamDeposits}
+	if rep, err := old.Step(ctx); err != nil || rep.Suspense != 0 || rep.Tip != 10 {
+		t.Fatalf("the old version: %+v, %v; want deposits only, tip 10", rep, err)
+	}
+	if _, err := f.l.Account(ctx, SuspenseAccount("ETH")); !errors.Is(err, ledger.ErrNotFound) {
+		t.Fatalf("the old version touched suspense: %v", err)
+	}
+
+	// What migration 0005 does for a vault already read.
+	if _, err := f.owner.Exec(ctx, `INSERT INTO indexer_streams (vault, stream, live_from, backfilled_to)
+		SELECT vault, 'withdrawals', max(number) + 1, min(number) FROM indexed_blocks GROUP BY vault`); err != nil {
+		t.Fatal(err)
+	}
+	rep := f.step(t)
+	if rep.Suspense != 1 || rep.Backlog != 3 {
+		t.Fatalf("first step of the new version: %+v, want the final payment applied and blocks 8..10 to wait", rep)
+	}
+	f.chain.mine(deposit{kind: KindPaid, id: common.HexToHash("0x3"), to: recipient, amount: eth(3), tx: tx("p3")}) // 11, live
+	if rep := f.step(t); rep.Suspense != 0 {
+		t.Fatalf("a payment not yet final: %+v, want nothing applied", rep)
+	}
+	f.chain.finalize(11)
+	rep = f.step(t)
+	if rep.Suspense != 2 || rep.Backlog != 0 {
+		t.Fatalf("after finality: %+v, want the backfilled and the live payment applied, nothing left", rep)
+	}
+	if rep := f.step(t); rep.Suspense != 0 || rep.Backfilled != 0 {
+		t.Fatalf("a step with nothing new: %+v", rep)
+	}
+	s, err := f.l.Account(ctx, SuspenseAccount("ETH"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.DebitsPosted.Cmp(eth(6)) != 0 {
+		t.Fatalf("suspense holds %s wei, want 6 ETH: each payment once", s.DebitsPosted)
+	}
+	f.vaultHolds(t, 3)
+	f.clean(t)
+}
+
+// A stream with no starting block after blocks were read is refused, not read from the
+// start again, which would count what was read twice.
+func TestStep_aStreamWithoutAStartIsRefused(t *testing.T) {
+	f := newFixture(t, 5)
+	f.chain.mine(deposit{account: alice, amount: eth(1), tx: tx("d")})
+	old := f.indexer()
+	old.Streams = []string{StreamDeposits}
+	if _, err := old.Step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.indexer().Step(context.Background()); err == nil {
+		t.Fatal("a stream added without a starting block was read")
 	}
 }

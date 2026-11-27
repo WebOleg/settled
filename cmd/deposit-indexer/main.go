@@ -153,13 +153,13 @@ func step(ctx context.Context, m *metrics, chain deposits.Chain, l *ledger.Ledge
 		return err
 	}
 	m.stepped(rep)
-	if rep.Seen > 0 || rep.Posted > 0 || rep.Voided > 0 || rep.Fork != nil {
+	if rep.Seen > 0 || rep.Posted > 0 || rep.Voided > 0 || rep.Settled > 0 || rep.Cancelled > 0 || rep.Suspense > 0 || rep.Backfilled > 0 || rep.Fork != nil {
 		fork := "-"
 		if rep.Fork != nil {
 			fork = fmt.Sprint(*rep.Fork)
 		}
-		log.Printf("deposit-indexer: tip %d head %d finalized %d: %d seen, %d posted, %d voided, fork %s",
-			rep.Tip, rep.Head, rep.Finalized, rep.Seen, rep.Posted, rep.Voided, fork)
+		log.Printf("deposit-indexer: tip %d head %d finalized %d: deposits %d seen, %d posted, %d voided; withdrawals %d settled, %d cancelled; %d to suspense; %d blocks backfilled, %d to go; fork %s",
+			rep.Tip, rep.Head, rep.Finalized, rep.Seen, rep.Posted, rep.Voided, rep.Settled, rep.Cancelled, rep.Suspense, rep.Backfilled, rep.Backlog, fork)
 	}
 	return nil
 }
@@ -177,6 +177,11 @@ func check(ctx context.Context, m *metrics, l *ledger.Ledger) error {
 	if err := l.Pool().QueryRow(ctx, "SELECT count(*) FROM deposits WHERE status = 'pending'").Scan(&pending); err != nil {
 		return fmt.Errorf("count pending deposits: %w", err)
 	}
-	m.checked(len(problems), pending)
+	var suspense string
+	if err := l.Pool().QueryRow(ctx, "SELECT coalesce((SELECT (debits_posted - credits_posted)::text FROM accounts WHERE name = $1), '0')",
+		deposits.SuspenseAccount("ETH")).Scan(&suspense); err != nil {
+		return fmt.Errorf("read the suspense account: %w", err)
+	}
+	m.checked(len(problems), pending, suspense)
 	return nil
 }

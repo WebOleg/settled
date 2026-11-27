@@ -28,22 +28,55 @@ deposit id: after a reorganisation the same id can name another deposit, and the
 transaction can come back in another block. That one is voided in the old block and
 held again in the new one, so it is credited once.
 
+## Payments and cancellations
+
+The indexer reads the vault's `WithdrawalPaid` and `WithdrawalCancelled` the same way,
+keyed by block and log index, held as pending until final and voided if their block
+leaves the chain first. Nothing reaches the ledger before they are final.
+
+| A final event | The ledger |
+|---|---|
+| A payment of a withdrawal the ledger holds ([withdrawals](withdrawals.md)), to its recipient and for its amount | The hold posted; the withdrawal `settled` |
+| Any other payment: an id the ledger never requested, or a different recipient or amount | Posted from `vault:ETH` to `suspense:ETH`: money that left the vault without the ledger, kept visible until someone explains it, as a bank keeps unmatched items |
+| A cancellation of a withdrawal the ledger holds | The hold released; the withdrawal `cancelled` |
+
+So what the ledger holds for the vault always follows the chain, whatever paid it.
+On the devnet, `make vault-check` pays from the vault directly with the operator's key;
+those payments are in suspense.
+
+## Streams and backfill
+
+The indexer reads two streams of events, deposits and withdrawals, each from a block of
+its own (`indexer_streams`), so a version that reads a new kind of event joins a ledger
+that is already running without rebuilding it. A stream starts at the vault's
+deployment block on a new ledger. A stream added later is read live from the block
+after the tip it is added at, which its migration records; the blocks below are read
+once more for that stream alone, a backfill: a range of final blocks at a time, each in
+one transaction with the stream's position, and the blocks not yet final once they are.
+Every event is applied once: below its stream's start by the backfill, from it on live.
+A stream without a start on a ledger that has read blocks is refused, not read from
+the beginning, which would count again what was read.
+
+`bridge-check` compares withdrawal events only up to where the backfill has reached
+while it runs, and the ledger with the vault once it is done.
+
 ## A step
 
 1. Read the node's latest and finalized blocks.
 2. Compare the highest stored block, or the stored block at the node's head if the
    chain got shorter, with the node's block at that height. If they differ, walk down
    the stored blocks to the highest one still in the chain, the fork, and in one
-   transaction void every pending deposit above it and forget the blocks above it.
+   transaction void every pending deposit, payment and cancellation above it and
+   forget the blocks above it.
 3. Read final blocks the indexer has not read yet a range at a time
-   (`eth_getLogs` over block numbers is safe there), recording their deposits as
-   posted at once.
+   (`eth_getLogs` over block numbers is safe there), applying their events at once.
 4. Read blocks not yet final one at a time: each must name the stored tip as its
    parent, and its logs are read by block hash (EIP-234), so they belong to that
    block even if the chain moves meanwhile. A block that does not sit on the tip ends
    the step; the next one unwinds.
 5. If the stored block at the finalized height is the node's finalized block, mark
-   every stored block up to it final and post every pending deposit up to it.
+   every stored block up to it final, post every pending deposit up to it, then apply
+   every pending payment and cancellation up to it in chain order.
 
 Every write is one transaction that also takes an advisory lock for the vault and
 checks that the stored tip is still the one the step built on. A crash between two
@@ -61,10 +94,15 @@ deposit is unique in the database, and each ledger transfer has its own key.
 | D4 Final is final | A final block is never unwound. If the node's chain no longer has one, the indexer stops with `ErrFinalityViolation` and changes nothing: credits were made on a chain that is gone, which a person must look at. | `TestStep_aFinalBlockLeavingTheChainStopsTheIndexer`, a trigger on `indexed_blocks` |
 | D5 Atomic | The chain as read and the ledger change together; an error from the node leaves both as they were. | `TestStep_aNodeErrorChangesNothing` |
 | D6 History | A deposit only moves from pending to posted or voided; no row is deleted. | A trigger on `deposits` |
+| D7 Settlement | A final payment of a withdrawal the ledger holds posts its hold; a payment not yet final does nothing, and one that leaves the chain first settles nothing. | `TestStep_aFinalPaymentSettlesItsWithdrawal`, `TestStep_aPaymentThatLeftTheChainSettlesNothing` |
+| D8 Suspense | A final payment the ledger never requested is posted to suspense, so the ledger still holds what the vault holds. | `TestStep_aPaymentNobodyRequestedGoesToSuspense` |
+| D9 Cancellation | A final cancellation releases the hold. | `TestStep_aFinalCancellationReleasesTheHold` |
+| D10 Backfill | A stream added after blocks were read gets the final blocks below its start read once for it alone, the ones not yet final once they are, and every event is applied once; a stream with no start is refused. | `TestStep_aStreamAddedLaterIsBackfilledOnce`, `TestStep_aStreamWithoutAStartIsRefused` |
 
 The indexer runs as `deposit_indexer`, which holds `ledger_writer` and may insert
-blocks and deposits, delete blocks that are not final, and change a deposit's status
-and a block's final flag, nothing else.
+blocks, deposits and withdrawal events, delete blocks that are not final, change a
+deposit's or an event's status and a block's final flag, and settle or cancel a
+withdrawal, nothing else.
 
 ## End to end
 
@@ -81,7 +119,9 @@ deposits:
    it is credited;
 3. a fourth deposit's signed transaction is put back by `anvil_reorg` into a new block:
    voided in the old block, held in the new one, credited once;
-4. the books agree with the journal, and what the ledger holds for the vault equals
+4. the operator pays half an ETH from the vault without the ledger: once final it is
+   in suspense;
+5. the books agree with the journal, and what the ledger holds for the vault equals
    `accounted(ETH)` of the vault on chain at the finalized block, to the wei.
 
 ## The command

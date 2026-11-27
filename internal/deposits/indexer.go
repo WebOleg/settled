@@ -1,9 +1,11 @@
-// Package deposits credits the vault's deposits to the ledger, only once they are
-// final. A deposit seen in a block not yet final is held in the ledger (a pending
-// transfer); when the node's finalized block reaches it, it is posted; if its block
-// leaves the chain first, it is voided. The indexer's view of the chain and the ledger
-// change in one transaction, so a crash or a second indexer can neither lose a
-// deposit nor count one twice. docs/design/deposits.md describes it.
+// Package deposits keeps the ledger in step with the vault's money events, only once
+// they are final. A deposit seen in a block not yet final is held in the ledger (a
+// pending transfer); when the node's finalized block reaches it, it is posted; if its
+// block leaves the chain first, it is voided. A final payment settles its withdrawal
+// (internal/withdrawals) and a final cancellation releases it; a payment the ledger
+// never requested is posted to the suspense account. The indexer's view of the chain
+// and the ledger change in one transaction, so a crash or a second indexer can
+// neither lose an event nor count one twice. docs/design/deposits.md describes it.
 package deposits
 
 import (
@@ -34,6 +36,38 @@ type Indexer struct {
 	// MaxRange is the most final blocks read in one range; MaxBlocks the most blocks
 	// not yet final read one by one in one step.
 	MaxRange, MaxBlocks uint64
+	// Streams are the kinds of events read: StreamDeposits, StreamWithdrawals. Empty
+	// means all; a test leaves one out to stand for a version that did not read it.
+	Streams []string
+}
+
+// The streams of events the indexer reads, each from its own starting block
+// (indexer_streams).
+const (
+	StreamDeposits    = "deposits"
+	StreamWithdrawals = "withdrawals"
+)
+
+var allStreams = []string{StreamDeposits, StreamWithdrawals}
+
+func streamOf(k Kind) string {
+	if k == KindDeposit {
+		return StreamDeposits
+	}
+	return StreamWithdrawals
+}
+
+// position is where a stream is read from: live from liveFrom on, and below it the
+// final blocks up to backfilledTo.
+type position struct {
+	liveFrom, backfilledTo uint64
+}
+
+func (x *Indexer) streams() []string {
+	if len(x.Streams) == 0 {
+		return allStreams
+	}
+	return x.Streams
 }
 
 // Report is what one step did.
@@ -43,6 +77,12 @@ type Report struct {
 	Tip uint64
 	// Seen deposits are new, Posted ones became final, Voided ones left the chain.
 	Seen, Posted, Voided int
+	// Backfilled final blocks read again for a stream added later; Backlog of them
+	// still to read.
+	Backfilled, Backlog uint64
+	// Final payments and cancellations: Settled and Cancelled withdrawals of the
+	// ledger, and Suspense payments it never requested.
+	Settled, Cancelled, Suspense int
 	// Fork is the block a reorganisation went back to, when there was one.
 	Fork *uint64
 }
@@ -84,6 +124,10 @@ func (x *Indexer) Step(ctx context.Context) (Report, error) {
 		}
 		tip = stored{number: anchor.Number, hash: anchor.Hash}
 	}
+	pos, err := x.positions(ctx)
+	if err != nil {
+		return rep, err
+	}
 
 	// A reorganisation: the block at the tip, or at the head if the chain got shorter,
 	// is not the one stored.
@@ -122,7 +166,7 @@ func (x *Indexer) Step(ctx context.Context) (Report, error) {
 		if err != nil {
 			return rep, err
 		}
-		seen, err := x.record(ctx, tip, last, events, true)
+		seen, err := x.record(ctx, tip, last, live(events, pos), true, &rep)
 		if err != nil {
 			return rep, err
 		}
@@ -147,7 +191,7 @@ func (x *Indexer) Step(ctx context.Context) (Report, error) {
 		if err != nil {
 			return rep, err
 		}
-		seen, err := x.record(ctx, tip, b, events, false)
+		seen, err := x.record(ctx, tip, b, live(events, pos), false, &rep)
 		if err != nil {
 			return rep, err
 		}
@@ -159,12 +203,134 @@ func (x *Indexer) Step(ctx context.Context) (Report, error) {
 	}
 	rep.Tip = tip.number
 
-	posted, err := x.finalize(ctx, fin)
+	posted, err := x.finalize(ctx, fin, &rep)
 	if err != nil {
 		return rep, err
 	}
 	rep.Posted += posted
+	if err := x.backfill(ctx, pos, &rep); err != nil {
+		return rep, err
+	}
 	return rep, nil
+}
+
+// live keeps the events of the streams read live at their block.
+func live(events []Event, pos map[string]position) []Event {
+	out := events[:0:0]
+	for _, e := range events {
+		if p, ok := pos[streamOf(e.Kind)]; ok && e.Block >= p.liveFrom {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// positions reads where each stream is read from. A stream with no position yet is
+// read from the vault's deployment block, if the indexer has read nothing yet; a stream
+// added after the indexer read blocks gets its position from its migration, which knows
+// the tip it was added at.
+func (x *Indexer) positions(ctx context.Context) (map[string]position, error) {
+	pos := map[string]position{}
+	err := x.Ledger.InTx(ctx, func(tx pgx.Tx, _ *ledger.Ledger) error {
+		if err := x.lock(ctx, tx); err != nil {
+			return err
+		}
+		var read int
+		if err := tx.QueryRow(ctx, "SELECT count(*) FROM indexed_blocks WHERE vault = $1 AND number >= $2", x.Vault.Bytes(), x.Start).Scan(&read); err != nil {
+			return fmt.Errorf("deposits: read the stored blocks: %w", err)
+		}
+		for _, st := range x.streams() {
+			var p position
+			err := tx.QueryRow(ctx, "SELECT live_from, backfilled_to FROM indexer_streams WHERE vault = $1 AND stream = $2", x.Vault.Bytes(), st).
+				Scan(&p.liveFrom, &p.backfilledTo)
+			if errors.Is(err, pgx.ErrNoRows) {
+				if read > 0 {
+					return fmt.Errorf("deposits: stream %s has no starting block, and blocks were read without it; its migration sets one", st)
+				}
+				p = position{liveFrom: x.Start, backfilledTo: x.Start - 1}
+				if _, err := tx.Exec(ctx, "INSERT INTO indexer_streams (vault, stream, live_from, backfilled_to) VALUES ($1, $2, $3, $4)",
+					x.Vault.Bytes(), st, p.liveFrom, p.backfilledTo); err != nil {
+					return fmt.Errorf("deposits: start stream %s: %w", st, err)
+				}
+			} else if err != nil {
+				return fmt.Errorf("deposits: read stream %s: %w", st, err)
+			}
+			pos[st] = p
+		}
+		return nil
+	})
+	return pos, err
+}
+
+// backfill reads, for each stream added after blocks were read, the final blocks it
+// missed, a range at a time, up to the block before it went live. The events are
+// final, so they apply at once. Blocks not yet final wait until they are.
+func (x *Indexer) backfill(ctx context.Context, pos map[string]position, rep *Report) error {
+	var final uint64
+	if err := x.Ledger.Pool().QueryRow(ctx, "SELECT coalesce(max(number) FILTER (WHERE final), 0) FROM indexed_blocks WHERE vault = $1",
+		x.Vault.Bytes()).Scan(&final); err != nil {
+		return fmt.Errorf("deposits: read the last final block: %w", err)
+	}
+	maxRange := max(x.MaxRange, 1)
+	for _, st := range x.streams() {
+		p := pos[st]
+		for range 8 { // a bounded share of a step
+			if p.backfilledTo+1 >= p.liveFrom {
+				break
+			}
+			from, to := p.backfilledTo+1, min(p.liveFrom-1, final, p.backfilledTo+maxRange)
+			if to < from {
+				break
+			}
+			events, err := x.Chain.EventsInRange(ctx, x.Vault, from, to)
+			if err != nil {
+				return err
+			}
+			moved := false
+			err = x.Ledger.InTx(ctx, func(tx pgx.Tx, in *ledger.Ledger) error {
+				if err := x.lock(ctx, tx); err != nil {
+					return err
+				}
+				var at uint64
+				if err := tx.QueryRow(ctx, "SELECT backfilled_to FROM indexer_streams WHERE vault = $1 AND stream = $2 FOR UPDATE",
+					x.Vault.Bytes(), st).Scan(&at); err != nil {
+					return fmt.Errorf("deposits: read stream %s: %w", st, err)
+				}
+				if at != p.backfilledTo {
+					moved = true // another indexer did this range
+					return nil
+				}
+				for _, e := range events {
+					if streamOf(e.Kind) != st || e.Block < from || e.Block > to {
+						continue
+					}
+					var err error
+					if e.Kind == KindDeposit {
+						err = x.hold(ctx, tx, in, e, true)
+					} else {
+						err = x.noteWithdrawal(ctx, tx, in, e, true, rep)
+					}
+					if err != nil {
+						return err
+					}
+				}
+				_, err := tx.Exec(ctx, "UPDATE indexer_streams SET backfilled_to = $3 WHERE vault = $1 AND stream = $2", x.Vault.Bytes(), st, to)
+				return err
+			})
+			if err != nil {
+				return fmt.Errorf("deposits: backfill %s %d..%d: %w", st, from, to, err)
+			}
+			if moved {
+				break
+			}
+			rep.Backfilled += to - from + 1
+			p.backfilledTo = to
+		}
+		if p.backfilledTo+1 < p.liveFrom {
+			rep.Backlog += p.liveFrom - 1 - p.backfilledTo
+		}
+	}
+	return nil
 }
 
 // lock serializes indexers of the same vault, transaction by transaction. Each
@@ -276,6 +442,11 @@ func (x *Indexer) unwind(ctx context.Context, tip stored, n uint64) (*uint64, in
 				return err
 			}
 		}
+		// Payments and cancellations not yet final did nothing to the ledger yet.
+		if _, err := tx.Exec(ctx, "UPDATE withdrawal_events SET status = 'voided' WHERE vault = $1 AND block_number > $2 AND status = 'pending'",
+			x.Vault.Bytes(), *fork); err != nil {
+			return fmt.Errorf("deposits: void withdrawal events: %w", err)
+		}
 		if _, err := tx.Exec(ctx, "DELETE FROM indexed_blocks WHERE vault = $1 AND number > $2", x.Vault.Bytes(), *fork); err != nil {
 			return fmt.Errorf("deposits: forget blocks above %d: %w", *fork, err)
 		}
@@ -302,7 +473,7 @@ func (x *Indexer) tipMoved(ctx context.Context, tx pgx.Tx, tip stored) (bool, er
 // record stores block b on top of tip with its deposits, held or, when final,
 // credited at once. It returns -1 if the tip is no longer tip: another indexer got
 // there first.
-func (x *Indexer) record(ctx context.Context, tip stored, b Header, events []Event, final bool) (int, error) {
+func (x *Indexer) record(ctx context.Context, tip stored, b Header, events []Event, final bool, rep *Report) (int, error) {
 	seen := 0
 	err := x.Ledger.InTx(ctx, func(tx pgx.Tx, in *ledger.Ledger) error {
 		if err := x.lock(ctx, tx); err != nil {
@@ -324,10 +495,17 @@ func (x *Indexer) record(ctx context.Context, tip stored, b Header, events []Eve
 			if e.Block < tip.number+1 || e.Block > b.Number || (!final && e.BlockHash != b.Hash) {
 				return fmt.Errorf("deposits: event %s/%d of block %d is outside %d..%d", e.BlockHash, e.LogIndex, e.Block, tip.number+1, b.Number)
 			}
-			if err := x.hold(ctx, tx, in, e, final); err != nil {
-				return err
+			switch e.Kind {
+			case KindDeposit:
+				if err := x.hold(ctx, tx, in, e, final); err != nil {
+					return err
+				}
+				seen++
+			case KindPaid, KindCancelled:
+				if err := x.noteWithdrawal(ctx, tx, in, e, final, rep); err != nil {
+					return err
+				}
 			}
-			seen++
 		}
 		return nil
 	})
@@ -372,7 +550,7 @@ func post(ctx context.Context, tx pgx.Tx, in *ledger.Ledger, key string) error {
 // finalize posts every pending deposit at or below the node's finalized block, once the
 // stored block at that height is the finalized one: the stored blocks above the last
 // final one are a chain linked by parent hashes, so all of them below it are final too.
-func (x *Indexer) finalize(ctx context.Context, fin Header) (int, error) {
+func (x *Indexer) finalize(ctx context.Context, fin Header, rep *Report) (int, error) {
 	at, err := x.storedAt(ctx, fin.Number)
 	if err != nil || at == nil || at.hash != fin.Hash {
 		return 0, err // not read that far yet, or a reorganisation the next step unwinds
@@ -410,6 +588,22 @@ func (x *Indexer) finalize(ctx context.Context, fin Header) (int, error) {
 			}
 		}
 		posted = len(keys)
+		// Then payments and cancellations, in chain order, after the deposits that
+		// paid for them.
+		evRows, err := tx.Query(ctx, `SELECT id FROM withdrawal_events WHERE vault = $1 AND block_number <= $2 AND status = 'pending'
+			ORDER BY block_number, log_index`, x.Vault.Bytes(), fin.Number)
+		if err != nil {
+			return fmt.Errorf("deposits: read pending withdrawal events: %w", err)
+		}
+		evs, err := pgx.CollectRows(evRows, pgx.RowTo[int64])
+		if err != nil {
+			return fmt.Errorf("deposits: read pending withdrawal events: %w", err)
+		}
+		for _, id := range evs {
+			if err := x.applyWithdrawal(ctx, tx, in, id, rep); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	return posted, err
@@ -439,3 +633,96 @@ func Pending(ctx context.Context, l *ledger.Ledger, account common.Hash, asset s
 	}
 	return a.CreditsPending, nil
 }
+
+// noteWithdrawal records a payment or a cancellation, applied at once when final.
+func (x *Indexer) noteWithdrawal(ctx context.Context, tx pgx.Tx, in *ledger.Ledger, e Event, final bool, rep *Report) error {
+	var token, recipient []byte
+	var amount *string
+	if e.Kind == KindPaid {
+		token, recipient = e.Token.Bytes(), e.Recipient.Bytes()
+		a := e.Amount.String()
+		amount = &a
+	}
+	var id int64
+	if err := tx.QueryRow(ctx, `INSERT INTO withdrawal_events (vault, block_number, block_hash, log_index, tx_hash, withdrawal_id, kind, token, recipient, amount, status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::numeric, 'pending') RETURNING id`,
+		x.Vault.Bytes(), e.Block, e.BlockHash.Bytes(), e.LogIndex, e.TxHash.Bytes(), e.WithdrawalID.Bytes(), string(e.Kind),
+		token, recipient, amount).Scan(&id); err != nil {
+		return fmt.Errorf("deposits: record %s %s/%d: %w", e.Kind, e.BlockHash, e.LogIndex, err)
+	}
+	if final {
+		return x.applyWithdrawal(ctx, tx, in, id, rep)
+	}
+	return nil
+}
+
+// applyWithdrawal applies a final payment or cancellation. A payment of a withdrawal
+// the ledger holds, to its recipient and for its amount, posts the hold; any other
+// payment left the vault without the ledger and goes to suspense. A cancellation of a
+// withdrawal the ledger holds releases the hold.
+func (x *Indexer) applyWithdrawal(ctx context.Context, tx pgx.Tx, in *ledger.Ledger, eventID int64, rep *Report) error {
+	var kind string
+	var wid, bh, token, recipient []byte
+	var logIndex int
+	var amount *string
+	if err := tx.QueryRow(ctx, `SELECT kind, withdrawal_id, block_hash, log_index, token, recipient, amount::text FROM withdrawal_events WHERE id = $1`,
+		eventID).Scan(&kind, &wid, &bh, &logIndex, &token, &recipient, &amount); err != nil {
+		return fmt.Errorf("deposits: read withdrawal event %d: %w", eventID, err)
+	}
+	var status, ledgerKey, wAmount string
+	var wToken, wRecipient []byte
+	err := tx.QueryRow(ctx, `SELECT status, token, recipient, amount::text, ledger_key FROM withdrawals WHERE id = $1 AND vault = $2 FOR UPDATE`,
+		wid, x.Vault.Bytes()).Scan(&status, &wToken, &wRecipient, &wAmount, &ledgerKey)
+	known := err == nil
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("deposits: read withdrawal %x: %w", wid, err)
+	}
+	open := known && (status == "requested" || status == "onchain")
+
+	outcome := "none"
+	switch {
+	case kind == string(KindPaid) && open && string(wToken) == string(token) && string(wRecipient) == string(recipient) && wAmount == *amount:
+		if _, err := tx.Exec(ctx, "UPDATE withdrawals SET status = 'settled', last_error = NULL WHERE id = $1", wid); err != nil {
+			return fmt.Errorf("deposits: settle withdrawal %x: %w", wid, err)
+		}
+		if _, err := in.Transfer(ctx, ledger.Transfer{Key: ledgerKey + ":post", Kind: ledger.Post, PendingKey: ledgerKey, Code: "withdrawal"}); err != nil {
+			return err
+		}
+		outcome = "settled"
+		rep.Settled++
+	case kind == string(KindPaid):
+		asset := Asset(common.BytesToAddress(token))
+		v, err := in.CreateAccount(ctx, "vault:"+asset, asset, ledger.CreditsWithinDebits)
+		if err != nil {
+			return err
+		}
+		suspense, err := in.CreateAccount(ctx, SuspenseAccount(asset), asset, ledger.NoLimit)
+		if err != nil {
+			return err
+		}
+		amt, _ := new(big.Int).SetString(*amount, 10)
+		key := fmt.Sprintf("payout:%x:%x:%d", x.Vault.Bytes(), bh, logIndex)
+		if _, err := in.Transfer(ctx, ledger.Transfer{Key: key, Kind: ledger.Single, Debit: suspense.ID, Credit: v.ID, Amount: amt, Code: "payout-unmatched"}); err != nil {
+			return err
+		}
+		outcome = "suspense"
+		rep.Suspense++
+	case kind == string(KindCancelled) && open:
+		if _, err := tx.Exec(ctx, "UPDATE withdrawals SET status = 'cancelled' WHERE id = $1", wid); err != nil {
+			return fmt.Errorf("deposits: cancel withdrawal %x: %w", wid, err)
+		}
+		if _, err := in.Transfer(ctx, ledger.Transfer{Key: ledgerKey + ":void", Kind: ledger.Void, PendingKey: ledgerKey, Code: "withdrawal-cancelled"}); err != nil {
+			return err
+		}
+		outcome = "cancelled"
+		rep.Cancelled++
+	}
+	if _, err := tx.Exec(ctx, "UPDATE withdrawal_events SET status = 'final', outcome = $2 WHERE id = $1", eventID, outcome); err != nil {
+		return fmt.Errorf("deposits: finish withdrawal event %d: %w", eventID, err)
+	}
+	return nil
+}
+
+// SuspenseAccount is where payments the ledger never requested are posted: money that
+// left the vault without the ledger, kept visible until someone explains it.
+func SuspenseAccount(asset string) string { return "suspense:" + asset }

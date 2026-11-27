@@ -11,8 +11,8 @@ func TestMetrics_reportWhatTheStepsDid(t *testing.T) {
 	m := &metrics{}
 	fork := uint64(40)
 	m.stepped(deposits.Report{Head: 50, Finalized: 30, Tip: 48, Seen: 3, Posted: 1})
-	m.stepped(deposits.Report{Head: 51, Finalized: 31, Tip: 51, Voided: 1, Fork: &fork})
-	m.checked(0, 2)
+	m.stepped(deposits.Report{Head: 51, Finalized: 31, Tip: 51, Voided: 1, Fork: &fork, Settled: 2, Cancelled: 1, Suspense: 1, Backfilled: 40, Backlog: 7})
+	m.checked(0, 2, "1000")
 	m.failed()
 	var b strings.Builder
 	if err := m.write(&b); err != nil {
@@ -31,6 +31,12 @@ func TestMetrics_reportWhatTheStepsDid(t *testing.T) {
 		"deposit_indexer_finality_violation 0\n",
 		"deposit_indexer_pending_deposits 2\n",
 		"ledger_check_problems 0\n",
+		"deposit_indexer_withdrawals_settled_total 2\n",
+		"deposit_indexer_withdrawals_cancelled_total 1\n",
+		"deposit_indexer_payments_to_suspense_total 1\n",
+		"ledger_suspense_wei 1000\n",
+		"deposit_indexer_backfilled_blocks_total 40\n",
+		"deposit_indexer_backfill_backlog_blocks 7\n",
 		"# TYPE deposit_indexer_reorgs_total counter\n",
 	} {
 		if !strings.Contains(b.String(), want) {

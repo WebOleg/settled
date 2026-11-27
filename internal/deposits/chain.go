@@ -14,8 +14,22 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-// TopicDeposited is keccak256 of the vault's Deposited event (IVault).
-var TopicDeposited = crypto.Keccak256Hash([]byte("Deposited(uint256,address,address,bytes32,uint256)"))
+// Topics of the vault's events the indexer reads (IVault), keccak256 of the signatures.
+var (
+	TopicDeposited = crypto.Keccak256Hash([]byte("Deposited(uint256,address,address,bytes32,uint256)"))
+	TopicPaid      = crypto.Keccak256Hash([]byte("WithdrawalPaid(bytes32,address,address,uint256)"))
+	TopicCancelled = crypto.Keccak256Hash([]byte("WithdrawalCancelled(bytes32,address)"))
+	topics         = [][]common.Hash{{TopicDeposited, TopicPaid, TopicCancelled}}
+)
+
+// Kind is which of the vault's events an Event is.
+type Kind string
+
+const (
+	KindDeposit   Kind = "deposit"
+	KindPaid      Kind = "paid"
+	KindCancelled Kind = "cancelled"
+)
 
 // Native is the address that stands for ETH in the vault (ERC-7528).
 var Native = common.HexToAddress("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE")
@@ -27,17 +41,24 @@ type Header struct {
 	Parent common.Hash
 }
 
-// Event is one Deposited event of the vault.
+// Event is one of the vault's events that moves money: a deposit, a payment, or a
+// cancellation of a queued withdrawal.
 type Event struct {
+	Kind      Kind
 	Block     uint64
 	BlockHash common.Hash
 	TxHash    common.Hash
 	LogIndex  uint
+	// A deposit: its id, the depositor and the exchange account it is for.
 	DepositID *big.Int
-	Token     common.Address
 	Sender    common.Address
 	Account   common.Hash
-	Amount    *big.Int
+	// A payment or a cancellation: the withdrawal id; for a payment, its recipient.
+	WithdrawalID common.Hash
+	Recipient    common.Address
+	// Token and Amount, for a deposit and a payment.
+	Token  common.Address
+	Amount *big.Int
 }
 
 // Chain is what the indexer reads from a node.
@@ -45,10 +66,10 @@ type Chain interface {
 	Latest(ctx context.Context) (Header, error)
 	Finalized(ctx context.Context) (Header, error)
 	Header(ctx context.Context, n uint64) (Header, error)
-	// EventsInBlock returns the vault's deposits in the block with this hash, so they
+	// EventsInBlock returns the vault's events in the block with this hash, so they
 	// are the ones of that block even if the chain moves while they are read.
 	EventsInBlock(ctx context.Context, vault common.Address, block common.Hash) ([]Event, error)
-	// EventsInRange returns the vault's deposits in blocks from..to, all final.
+	// EventsInRange returns the vault's events in blocks from..to, all final.
 	EventsInRange(ctx context.Context, vault common.Address, from, to uint64) ([]Event, error)
 }
 
@@ -79,16 +100,16 @@ func (r RPC) Header(ctx context.Context, n uint64) (Header, error) {
 	return r.header(ctx, new(big.Int).SetUint64(n))
 }
 
-// EventsInBlock reads the deposits of one block by its hash (EIP-234).
+// EventsInBlock reads the events of one block by its hash (EIP-234).
 func (r RPC) EventsInBlock(ctx context.Context, vault common.Address, block common.Hash) ([]Event, error) {
-	return r.events(ctx, ethereum.FilterQuery{BlockHash: &block, Addresses: []common.Address{vault}, Topics: [][]common.Hash{{TopicDeposited}}})
+	return r.events(ctx, ethereum.FilterQuery{BlockHash: &block, Addresses: []common.Address{vault}, Topics: topics})
 }
 
-// EventsInRange reads the deposits of blocks from..to.
+// EventsInRange reads the events of blocks from..to.
 func (r RPC) EventsInRange(ctx context.Context, vault common.Address, from, to uint64) ([]Event, error) {
 	return r.events(ctx, ethereum.FilterQuery{
 		FromBlock: new(big.Int).SetUint64(from), ToBlock: new(big.Int).SetUint64(to),
-		Addresses: []common.Address{vault}, Topics: [][]common.Hash{{TopicDeposited}},
+		Addresses: []common.Address{vault}, Topics: topics,
 	})
 }
 
@@ -108,31 +129,53 @@ func (r RPC) events(ctx context.Context, q ethereum.FilterQuery) ([]Event, error
 	return out, nil
 }
 
-// Decode reads a Deposited log: the id, token and sender are indexed, the account and
-// amount are the data.
+// Decode reads one of the vault's logs. Deposited: the id, token and sender are
+// indexed, the account and amount are the data. WithdrawalPaid: the id, token and
+// recipient are indexed, the amount is the data. WithdrawalCancelled: the id and the
+// guardian are indexed.
 func Decode(l types.Log) (Event, error) {
 	if l.Removed {
 		return Event{}, fmt.Errorf("deposits: log %s/%d was removed by a reorganisation", l.BlockHash, l.Index)
 	}
-	if len(l.Topics) != 4 || l.Topics[0] != TopicDeposited {
-		return Event{}, fmt.Errorf("deposits: log %s/%d is not Deposited", l.BlockHash, l.Index)
+	e := Event{Block: l.BlockNumber, BlockHash: l.BlockHash, TxHash: l.TxHash, LogIndex: l.Index}
+	bad := func(what string) (Event, error) {
+		return Event{}, fmt.Errorf("deposits: log %s/%d: %s", l.BlockHash, l.Index, what)
 	}
-	if len(l.Data) != 64 {
-		return Event{}, fmt.Errorf("deposits: Deposited %s/%d has %d bytes of data, want 64", l.BlockHash, l.Index, len(l.Data))
+	if len(l.Topics) == 0 {
+		return bad("no topics")
 	}
-	amount := new(big.Int).SetBytes(l.Data[32:])
-	if amount.Sign() == 0 {
-		return Event{}, errors.New("deposits: Deposited with amount 0")
+	switch l.Topics[0] {
+	case TopicDeposited:
+		if len(l.Topics) != 4 || len(l.Data) != 64 {
+			return bad("not a Deposited event")
+		}
+		e.Kind = KindDeposit
+		e.DepositID = new(big.Int).SetBytes(l.Topics[1][:])
+		e.Token = common.BytesToAddress(l.Topics[2][:])
+		e.Sender = common.BytesToAddress(l.Topics[3][:])
+		e.Account = common.BytesToHash(l.Data[:32])
+		e.Amount = new(big.Int).SetBytes(l.Data[32:])
+	case TopicPaid:
+		if len(l.Topics) != 4 || len(l.Data) != 32 {
+			return bad("not a WithdrawalPaid event")
+		}
+		e.Kind = KindPaid
+		e.WithdrawalID = l.Topics[1]
+		e.Token = common.BytesToAddress(l.Topics[2][:])
+		e.Recipient = common.BytesToAddress(l.Topics[3][:])
+		e.Amount = new(big.Int).SetBytes(l.Data)
+	case TopicCancelled:
+		if len(l.Topics) != 3 || len(l.Data) != 0 {
+			return bad("not a WithdrawalCancelled event")
+		}
+		e.Kind = KindCancelled
+		e.WithdrawalID = l.Topics[1]
+		return e, nil
+	default:
+		return bad("not an event the indexer reads")
 	}
-	return Event{
-		Block:     l.BlockNumber,
-		BlockHash: l.BlockHash,
-		TxHash:    l.TxHash,
-		LogIndex:  l.Index,
-		DepositID: new(big.Int).SetBytes(l.Topics[1][:]),
-		Token:     common.BytesToAddress(l.Topics[2][:]),
-		Sender:    common.BytesToAddress(l.Topics[3][:]),
-		Account:   common.BytesToHash(l.Data[:32]),
-		Amount:    amount,
-	}, nil
+	if e.Amount.Sign() == 0 {
+		return Event{}, errors.New("deposits: an event with amount 0")
+	}
+	return e, nil
 }

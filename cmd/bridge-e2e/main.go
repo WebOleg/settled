@@ -8,7 +8,8 @@
 //  3. a held deposit is voided when anvil_reorg drops its block;
 //  4. a deposit whose transaction comes back in another block after a reorganisation
 //     is voided in the old block, held in the new one and credited once;
-//  5. the ledger agrees with its journal, and what it holds for the vault equals what
+//  5. a payment the operator makes without the ledger is posted to suspense once final;
+//  6. the ledger agrees with its journal, and what it holds for the vault equals what
 //     the vault on chain accounts for at the finalized block, to the wei.
 //
 // It connects to the database as a login that holds only deposit_indexer.
@@ -242,7 +243,38 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 		return err
 	}
 
-	// 5. The books, and the vault on chain.
+	// 5. A payment the ledger never requested.
+	operator, err := devkeys.FromMnemonic(anvilMnemonic, 1)
+	if err != nil {
+		return err
+	}
+	// Half an ETH: the rate limit starts empty and refills over 1,800 blocks.
+	half := new(big.Int).Div(ether(1), big.NewInt(2))
+	pay, err := vault.Call("withdraw", crypto.Keccak256Hash([]byte("paid without the ledger")), deposits.Native, keys[2], half)
+	if err != nil {
+		return err
+	}
+	if _, err := txsend.Send(ctx, client, operator, at, new(big.Int), pay); err != nil {
+		return fmt.Errorf("pay without the ledger: %w", err)
+	}
+	if err := mine(ctx, client, anvilFinality+1); err != nil {
+		return err
+	}
+	if rep, err := step("after the payment without the ledger"); err != nil {
+		return err
+	} else if rep.Suspense != 1 {
+		return fmt.Errorf("after the payment without the ledger: %+v, want 1 to suspense", rep)
+	}
+	sus, err := l.Account(ctx, deposits.SuspenseAccount("ETH"))
+	if err != nil {
+		return err
+	}
+	if sus.DebitsPosted.Cmp(half) != 0 {
+		return fmt.Errorf("suspense holds %s wei, want 0.5 ETH", sus.DebitsPosted)
+	}
+	ok("a payment without the ledger went to suspense", "0.5 ETH")
+
+	// 6. The books, and the vault on chain.
 	problems, err := l.Check(ctx)
 	if err != nil {
 		return err

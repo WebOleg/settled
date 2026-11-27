@@ -16,6 +16,10 @@ type metrics struct {
 	deployed              bool
 	head, finalized, tip  uint64
 	seen, posted, voided  uint64
+	settled, cancelled    uint64
+	suspense              uint64
+	suspenseWei           string
+	backfilled, backlog   uint64
 	reorgs, steps, errors uint64
 	lastStep              time.Time
 	finalityViolation     bool
@@ -32,6 +36,11 @@ func (m *metrics) stepped(r deposits.Report) {
 	m.seen += uint64(r.Seen)
 	m.posted += uint64(r.Posted)
 	m.voided += uint64(r.Voided)
+	m.settled += uint64(r.Settled)
+	m.cancelled += uint64(r.Cancelled)
+	m.suspense += uint64(r.Suspense)
+	m.backfilled += r.Backfilled
+	m.backlog = r.Backlog
 	if r.Fork != nil {
 		m.reorgs++
 	}
@@ -66,10 +75,10 @@ func (m *metrics) violation() bool {
 	return m.finalityViolation
 }
 
-func (m *metrics) checked(problems int, pending int64) {
+func (m *metrics) checked(problems int, pending int64, suspenseWei string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.checkProblems, m.pendingDeposits = problems, pending
+	m.checkProblems, m.pendingDeposits, m.suspenseWei = problems, pending, suspenseWei
 	m.lastCheck = time.Now()
 }
 
@@ -104,6 +113,16 @@ func (m *metrics) write(out io.Writer) error {
 	metric("counter", "deposit_indexer_deposits_seen_total", "Deposits recorded, held until final.", m.seen)
 	metric("counter", "deposit_indexer_deposits_posted_total", "Deposits credited, once final.", m.posted)
 	metric("counter", "deposit_indexer_deposits_voided_total", "Held deposits voided because their block left the chain.", m.voided)
+	metric("counter", "deposit_indexer_withdrawals_settled_total", "Withdrawals of the ledger paid and final: their holds posted.", m.settled)
+	metric("counter", "deposit_indexer_withdrawals_cancelled_total", "Withdrawals of the ledger cancelled and final: their holds released.", m.cancelled)
+	metric("counter", "deposit_indexer_payments_to_suspense_total", "Final payments the ledger never requested, posted to suspense.", m.suspense)
+	suspense := m.suspenseWei
+	if suspense == "" {
+		suspense = "0"
+	}
+	metric("gauge", "ledger_suspense_wei", "What the suspense account holds: payments that left the vault without the ledger, in wei.", suspense)
+	metric("counter", "deposit_indexer_backfilled_blocks_total", "Final blocks read again for a stream added after they were read.", m.backfilled)
+	metric("gauge", "deposit_indexer_backfill_backlog_blocks", "Blocks a stream added later still has to read again; 0 when every stream is complete.", m.backlog)
 	metric("counter", "deposit_indexer_reorgs_total", "Reorganisations unwound.", m.reorgs)
 	metric("counter", "deposit_indexer_steps_total", "Steps that succeeded.", m.steps)
 	metric("counter", "deposit_indexer_step_errors_total", "Steps that failed; nothing of a failed step is written.", m.errors)

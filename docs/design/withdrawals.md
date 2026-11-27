@@ -24,7 +24,7 @@ and acts on that alone.
 |---|---|
 | Nothing | Sends the open transaction for it again, the same bytes, if there is one; otherwise checks the call against the vault without sending it and signs a new one |
 | Queued | Waits for the release block, then pays it with `executeQueued` the same way |
-| Paid or cancelled | Signs nothing; the withdrawal stays `onchain` until it is settled or cancelled |
+| Paid or cancelled | Signs nothing; the indexer settles or cancels it once final ([deposits](deposits.md#payments-and-cancellations)) |
 
 ## A request
 

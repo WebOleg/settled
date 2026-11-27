@@ -7,9 +7,12 @@
 //     amount and account, and the ledger has no posted deposit the chain does not;
 //   - no deposit at or below that block is still held;
 //   - each customer's credited balance is the sum of the chain's deposits for it;
+//   - every WithdrawalPaid event is applied: it settled a withdrawal of the ledger or,
+//     paid without the ledger, went to suspense, and nothing else is applied; no
+//     payment or cancellation at or below that block is still pending;
 //   - the ledger's books agree with its journal (ledger_check);
-//   - what the ledger holds for the vault is the sum of the deposits, and the vault's
-//     own accounted(ETH) is that sum less the withdrawals it paid, to the wei.
+//   - what the ledger holds for the vault equals the vault's own accounted(ETH), to the
+//     wei, and is the deposits less the payments.
 //
 // It changes nothing.
 package main
@@ -26,7 +29,6 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/jackc/pgx/v5"
 
@@ -35,9 +37,6 @@ import (
 	"github.com/WebOleg/settled/internal/ledger"
 	"github.com/WebOleg/settled/internal/vaultconf"
 )
-
-// topicPaid is keccak256 of the vault's WithdrawalPaid event (IVault).
-var topicPaid = crypto.Keccak256Hash([]byte("WithdrawalPaid(bytes32,address,address,uint256)"))
 
 func main() {
 	rpcURL := flag.String("rpc", "http://127.0.0.1:28545", "verifier execution JSON-RPC on the L2")
@@ -158,6 +157,50 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 	if err := rows.Err(); err != nil {
 		return err
 	}
+	// Payments and cancellations are compared up to the same block, unless the indexer
+	// is still backfilling them (a stream added after blocks were read): then up to
+	// the last block backfilled, which is below every block they are read live in.
+	horizon := final
+	var liveFrom, backfilledTo uint64
+	if err := tx.QueryRow(ctx, "SELECT live_from, backfilled_to FROM indexer_streams WHERE vault = $1 AND stream = 'withdrawals'",
+		d.Vault.Bytes()).Scan(&liveFrom, &backfilledTo); err != nil {
+		return fmt.Errorf("read the indexer's withdrawals stream: %w", err)
+	}
+	backfilling := backfilledTo+1 < liveFrom
+	if backfilling {
+		horizon = min(final, backfilledTo)
+	}
+	// Payments and cancellations as the indexer applied them.
+	var eventsPending int
+	if err := tx.QueryRow(ctx, "SELECT count(*) FROM withdrawal_events WHERE vault = $1 AND status = 'pending' AND block_number <= $2",
+		d.Vault.Bytes(), horizon).Scan(&eventsPending); err != nil {
+		return err
+	}
+	rows, err = tx.Query(ctx, `SELECT block_hash, log_index, block_number, amount::text, outcome FROM withdrawal_events
+		WHERE vault = $1 AND status = 'final' AND kind = 'paid'`, d.Vault.Bytes())
+	if err != nil {
+		return err
+	}
+	type applied struct {
+		amount  *big.Int
+		number  uint64
+		outcome string
+	}
+	appliedPaid := map[key]applied{}
+	for rows.Next() {
+		var bh []byte
+		var idx int
+		var a applied
+		var amount string
+		if err := rows.Scan(&bh, &idx, &a.number, &amount, &a.outcome); err != nil {
+			return err
+		}
+		a.amount, _ = new(big.Int).SetString(amount, 10)
+		appliedPaid[key{common.BytesToHash(bh), uint(idx)}] = a
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
 	rows, err = tx.Query(ctx, "SELECT problem FROM ledger_check()")
 	if err != nil {
 		return fmt.Errorf("ledger_check: %w", err)
@@ -189,7 +232,7 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 	chain := map[key]entry{}
 	perAccount := map[common.Hash]*big.Int{}
 	total, paid := new(big.Int), new(big.Int)
-	payments := 0
+	chainPaid := map[key]entry{}
 	for from := d.Block; from <= final; from += 2000 {
 		to := min(final, from+1999)
 		events, err := deposits.RPC{Client: client}.EventsInRange(ctx, d.Vault, from, to)
@@ -197,8 +240,18 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 			return err
 		}
 		for _, e := range events {
+			if e.Kind == deposits.KindCancelled {
+				continue // moves no money
+			}
 			if e.Token != deposits.Native {
-				return fmt.Errorf("a deposit of token %s at block %d; the devnet vault takes ETH only", e.Token, e.Block)
+				return fmt.Errorf("a %s of token %s at block %d; the devnet vault takes ETH only", e.Kind, e.Token, e.Block)
+			}
+			if e.Kind == deposits.KindPaid {
+				if e.Block <= horizon {
+					chainPaid[key{e.BlockHash, e.LogIndex}] = entry{amount: e.Amount, number: e.Block}
+					paid.Add(paid, e.Amount)
+				}
+				continue
 			}
 			chain[key{e.BlockHash, e.LogIndex}] = entry{e.Account, e.Amount, e.Block}
 			total.Add(total, e.Amount)
@@ -206,18 +259,6 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 				perAccount[e.Account] = new(big.Int)
 			}
 			perAccount[e.Account].Add(perAccount[e.Account], e.Amount)
-		}
-		logs, err := client.FilterLogs(ctx, ethereum.FilterQuery{FromBlock: new(big.Int).SetUint64(from), ToBlock: new(big.Int).SetUint64(to),
-			Addresses: []common.Address{d.Vault}, Topics: [][]common.Hash{{topicPaid}, nil, {common.BytesToHash(deposits.Native.Bytes())}}})
-		if err != nil {
-			return fmt.Errorf("read WithdrawalPaid: %w", err)
-		}
-		for _, l := range logs {
-			if len(l.Data) != 32 {
-				return fmt.Errorf("WithdrawalPaid at block %d has %d bytes of data", l.BlockNumber, len(l.Data))
-			}
-			paid.Add(paid, new(big.Int).SetBytes(l.Data))
-			payments++
 		}
 	}
 
@@ -263,12 +304,49 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 	}
 	ok("the books agree with the journal", "ledger_check: none")
 
-	vaultHeld, err := balance("vault:ETH", false)
+	// Payment by payment.
+	settled, toSuspense := 0, new(big.Int)
+	for k, c := range chainPaid {
+		a, found := appliedPaid[k]
+		if !found {
+			return fmt.Errorf("the payment at block %d (%s, log %d) is not applied in the ledger", c.number, k.block, k.index)
+		}
+		if a.amount.Cmp(c.amount) != 0 {
+			return fmt.Errorf("the payment at block %d: ledger %s wei, chain %s wei", c.number, a.amount, c.amount)
+		}
+		switch a.outcome {
+		case "settled":
+			settled++
+		case "suspense":
+			toSuspense.Add(toSuspense, a.amount)
+		default:
+			return fmt.Errorf("the payment at block %d was applied as %q", c.number, a.outcome)
+		}
+	}
+	for k, a := range appliedPaid {
+		if _, found := chainPaid[k]; !found {
+			return fmt.Errorf("the ledger applied a payment at block %d (%s, log %d) the chain does not have", a.number, k.block, k.index)
+		}
+	}
+	if eventsPending != 0 {
+		return fmt.Errorf("%d payments or cancellations at or below block %d are still pending", eventsPending, horizon)
+	}
+	if backfilling {
+		ok("withdrawal events backfilled so far", fmt.Sprintf("up to block %d of %d; read live from %d", backfilledTo, liveFrom-1, liveFrom))
+	}
+	ok("every payment on chain is applied, and only those", fmt.Sprintf("%d payments, %s wei: %d settled withdrawals, %d to suspense", len(chainPaid), paid, settled, len(chainPaid)-settled))
+	suspense, err := balance(deposits.SuspenseAccount("ETH"), false)
 	if err != nil {
 		return err
 	}
-	if vaultHeld.Cmp(total) != 0 {
-		return fmt.Errorf("the ledger holds %s wei for the vault, the chain deposited %s", vaultHeld, total)
+	if suspense.Cmp(toSuspense) != 0 {
+		return fmt.Errorf("the suspense account holds %s wei, the payments posted to it are %s", suspense, toSuspense)
+	}
+	ok("suspense holds the payments made without the ledger", fmt.Sprintf("%s wei", suspense))
+
+	vaultHeld, err := balance("vault:ETH", false)
+	if err != nil {
+		return err
 	}
 	call, err := vault.Call("accounted", deposits.Native)
 	if err != nil {
@@ -279,9 +357,16 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 		return fmt.Errorf("accounted(ETH) at block %d: %w", final, err)
 	}
 	accounted := new(big.Int).SetBytes(out)
-	if want := new(big.Int).Sub(total, paid); accounted.Cmp(want) != 0 {
-		return fmt.Errorf("the vault accounts for %s wei at block %d; deposits less payments are %s", accounted, final, want)
+	if want := new(big.Int).Sub(total, paid); vaultHeld.Cmp(want) != 0 {
+		return fmt.Errorf("the ledger holds %s wei for the vault; deposits up to block %d less payments up to block %d are %s", vaultHeld, final, horizon, want)
 	}
-	ok("ledger = deposits; vault = deposits - payments", fmt.Sprintf("%s wei held, %d payments of %s wei, accounted %s", vaultHeld, payments, paid, accounted))
+	if backfilling {
+		ok("ledger = deposits less the payments backfilled", fmt.Sprintf("%s wei; equal to the vault once the backfill reaches block %d", vaultHeld, liveFrom-1))
+		return nil
+	}
+	if vaultHeld.Cmp(accounted) != 0 {
+		return fmt.Errorf("the ledger holds %s wei for the vault, the vault accounts for %s at block %d", vaultHeld, accounted, final)
+	}
+	ok("ledger holds exactly what the vault accounts for", fmt.Sprintf("%s wei at block %d", vaultHeld, final))
 	return nil
 }
