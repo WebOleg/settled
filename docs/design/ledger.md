@@ -34,7 +34,7 @@ Deposits and withdrawals of the vault map onto them so: a deposit is pending fro
 moment it is seen on the L2 and posted once its block is final, or voided if a
 reorganisation removes it. A withdrawal holds the customer's balance while it is paid
 and is posted once the payment is final. The [deposit indexer](deposits.md) does the
-first. A pending debit
+first; [withdrawals](withdrawals.md) the second. A pending debit
 counts against the limit, a pending credit does not: money on hold is not there to
 spend, and money not yet final is not there yet.
 
