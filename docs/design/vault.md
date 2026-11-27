@@ -27,13 +27,15 @@ events once the block is finalized, and send withdrawals with ids from the ledge
 | Role | Holder | Can |
 |---|---|---|
 | Admin | A `TimelockController`; every change waits its delay and is visible before it applies | Unpause; configure tokens and the queue delay; skim; grant and revoke roles; upgrade the implementation. Handing the admin role over takes two steps and a delay of its own (`AccessControlDefaultAdminRules`). |
+| Timelock proposer | A key for admin changes | Schedule a change on the timelock and execute it after the delay. It cannot cancel. |
+| Timelock canceller | A key kept apart from the proposer | Cancel a scheduled change before it applies. It cannot propose or execute. |
 | Operator | The hot key of the withdrawal service | Pay withdrawals; pay queued withdrawals after their delay. Nothing else. |
 | Guardian | A key kept apart from the service, for incidents | Pause; cancel queued withdrawals. It cannot unpause, move funds or change anything. |
 | Anyone | Users | Deposit. |
 
 The guardian can only stop things, the operator can only pay within limits, and every
 change of the rules goes through the timelock. No single key can both raise a limit and
-use it.
+use it, and no single key can both propose a change and keep it from being stopped.
 
 ## Deposits
 
@@ -105,16 +107,20 @@ taken over directly.
 `make vault-deploy` puts the vault on the devnet L2 the way it would go to production
 ([cmd/vault-deploy](../../cmd/vault-deploy/main.go)), once per L2:
 
-1. A `TimelockController` with the timelock proposer as its only proposer, executor and
-   canceller, and no separate admin: it administers itself, so its own roles change
-   only through its delay.
+1. A `TimelockController` with the timelock proposer as its only proposer and executor
+   and the timelock canceller as its only canceller
+   ([internal/timelockop](../../internal/timelockop/timelockop.go)). The constructor makes
+   every proposer a canceller, so the deployer is its admin for three calls: grant the
+   canceller role, revoke it from the proposer, renounce the admin role. From then on it
+   administers itself, so its own roles change only through its delay.
 2. The vault implementation, whose constructor disables its initializer.
 3. An `ERC1967Proxy` to the implementation, created and initialized in one transaction,
    so no one can initialize it in between. Its admin is the timelock.
 4. The first rule, the ETH configuration, proposed to the timelock and executed after
    the delay: from the first change on, the rules change the way they always will.
 
-The four keys (deployer, operator, guardian, timelock proposer) are created once in
+The five keys (deployer, operator, guardian, timelock proposer, timelock canceller) are
+created once in
 `.devnet/vault/keys`, readable by the owner only, and the deployer holds no role when it
 is done. Addresses and the L2 they belong to are recorded in
 `.devnet/vault/record/deployment.json`; a second run on the same L2 changes nothing, and a
@@ -138,7 +144,28 @@ handover pending, and every delay and the ETH configuration must be the values a
 The vault's clock must report block numbers and read the current one, and the L2 must
 make a block every 2 s by derivation, so the delays in blocks are the durations above.
 [VaultDeploy.t.sol](../../contracts/test/deploy/VaultDeploy.t.sol) runs the same steps
-in forge, the delay and a cancelled proposal included.
+in forge, the delay, the split of the timelock's roles and the move below included.
+
+### Moving to a new timelock
+
+A vault deployed before its timelock had a separate canceller moves to one without
+being redeployed: `make vault-timelock-move`
+([cmd/vault-timelock-move](../../cmd/vault-timelock-move/main.go)) hands the admin role
+to a new timelock with split roles through the vault's own two-step handover.
+
+1. The deployer deploys the new timelock as above; the record names it as the one being
+   moved to.
+2. The old timelock schedules `beginDefaultAdminTransfer(new)` and executes it after its
+   delay. The handover delay (300 s) starts.
+3. The new timelock schedules `acceptDefaultAdminTransfer()` so that its own delay ends
+   just after the handover delay, and executes it. The old timelock loses the admin
+   role in the same call.
+4. The record names the new timelock, and `make vault-verify` checks it as any other.
+
+The move takes about seven minutes on the devnet. A stopped run goes on from where it
+stopped: the record keeps the new timelock and the chain says how far the handover is.
+While a move is in progress `make vault-verify` fails, and when the timelock already
+has its roles split, the command does nothing.
 
 ### Upgrades on the devnet
 
@@ -178,8 +205,12 @@ step against the chain:
 4. The guardian pauses: a deposit and the queued payment are refused with
    `EnforcedPause`, and the guardian's own `unpause` is refused for want of the admin
    role. The admin unpauses through the timelock.
-5. After the release block the operator pays the queued withdrawal.
-6. The recipient holds exactly 6 ETH, and the vault's balance and `accounted` are back
+5. The proposer schedules a change no one wants (the longest queue delay the vault
+   takes), as a thief with its key would. Its own `cancel` is refused with
+   `AccessControlUnauthorizedAccount(proposer, CANCELLER_ROLE)`; the canceller cancels
+   it, and the timelock no longer knows the operation.
+6. After the release block the operator pays the queued withdrawal.
+7. The recipient holds exactly 6 ETH, and the vault's balance and `accounted` are back
    where they started, to the wei.
 
 Along the way the monitoring must see it: `VaultWithdrawalQueued` fires in Prometheus and
@@ -230,5 +261,6 @@ and 128 invariant runs of 64 calls; CI runs 10,000 and 512 of 128.
 | ETH to a contract that reverts | The payment reverts with `NativeTransferFailed` and the id stays unused, so the ledger can retry or send it elsewhere. |
 | A stolen operator key | At most the rate limit at once; large amounts wait in the queue for the guardian. |
 | A stolen guardian key | It can pause and cancel, nothing more; the admin unpauses. |
-| A stolen admin key | Every admin action waits in the timelock, where it can be seen and answered before it applies. |
+| A stolen timelock proposer key | Every change it schedules waits the delay, in public, and the canceller, a separate key, cancels it. |
+| A stolen timelock canceller key | It can cancel changes, nothing more; the admin revokes the role through the timelock. |
 | Errors | Custom errors with the values that caused them, so a revert says what went wrong. |

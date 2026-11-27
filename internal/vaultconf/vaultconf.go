@@ -35,10 +35,13 @@ const (
 	Operator         rolekeys.Role = "operator"
 	Guardian         rolekeys.Role = "guardian"
 	TimelockProposer rolekeys.Role = "timelock-proposer"
+	// TimelockCanceller can only cancel what the proposer scheduled, so a stolen
+	// proposer key is answered within the delay.
+	TimelockCanceller rolekeys.Role = "timelock-canceller"
 )
 
 // Roles lists the keys of the vault.
-var Roles = []rolekeys.Role{Deployer, Operator, Guardian, TimelockProposer}
+var Roles = []rolekeys.Role{Deployer, Operator, Guardian, TimelockProposer, TimelockCanceller}
 
 // Devnet parameters. Production keeps the same structure with longer delays (days for
 // the timelock and the admin handover, hours for the queue) and limits set from the
@@ -98,14 +101,12 @@ func (c TokenConfig) Validate() error {
 	return nil
 }
 
-// Role hashes, as the contracts compute them.
+// Role hashes of the vault, as the contract computes them; the timelock's are in
+// internal/timelockop.
 var (
-	OperatorRole  = crypto.Keccak256Hash([]byte("OPERATOR_ROLE"))
-	GuardianRole  = crypto.Keccak256Hash([]byte("GUARDIAN_ROLE"))
-	AdminRole     = common.Hash{}
-	ProposerRole  = crypto.Keccak256Hash([]byte("PROPOSER_ROLE"))
-	ExecutorRole  = crypto.Keccak256Hash([]byte("EXECUTOR_ROLE"))
-	CancellerRole = crypto.Keccak256Hash([]byte("CANCELLER_ROLE"))
+	OperatorRole = crypto.Keccak256Hash([]byte("OPERATOR_ROLE"))
+	GuardianRole = crypto.Keccak256Hash([]byte("GUARDIAN_ROLE"))
+	AdminRole    = common.Hash{}
 )
 
 // Deployment is the record vault-deploy writes and vault-verify reads.
@@ -119,6 +120,9 @@ type Deployment struct {
 	// StorageLayout is the storage layout of the implementation the vault runs, kept so
 	// that an upgrade can be checked against it before it is proposed.
 	StorageLayout []storagelayout.Entry `json:"storageLayout,omitempty"`
+	// NextTimelock is the timelock the vault's admin is moving to, while the move is in
+	// progress (cmd/vault-timelock-move); nil otherwise.
+	NextTimelock *common.Address `json:"nextTimelock,omitempty"`
 }
 
 // ReadDeployment reads RecordDir/deployment.json from root. It wraps fs.ErrNotExist when there

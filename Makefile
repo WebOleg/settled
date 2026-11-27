@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts contracts-snapshot contracts-slither-record l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-upgrade vault-check vault-reset l2-logs l2-down l2-reset
+.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts contracts-snapshot contracts-slither-record l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-upgrade vault-timelock-move vault-check vault-reset l2-logs l2-down l2-reset
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
@@ -156,6 +156,9 @@ vault-verify: ## Check the vault on the L2 against the repository: code, roles, 
 vault-upgrade: ## Upgrade the vault to the code the repository builds, through the timelock
 	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/contracts/build.sh
 	@go run ./cmd/vault-upgrade
+
+vault-timelock-move: ## Move the vault's admin to a new timelock whose canceller is a separate key, through both delays
+	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/contracts/vault-timelock-move.sh
 
 vault-check: ## Run the vault's rules on the L2 with real transactions and account for every wei
 	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/contracts/vault-check.sh

@@ -136,20 +136,14 @@ func run(ctx context.Context, rpcURL, outDir string) error {
 	}
 
 	delay := big.NewInt(vaultconf.TimelockDelay)
-	proposers := []common.Address{addr[vaultconf.TimelockProposer]}
-	// No separate admin: the timelock administers itself, so its own roles change only
-	// through its delay.
-	data, err := timelock.DeployData(delay, proposers, proposers, common.Address{})
-	if err != nil {
-		return err
-	}
-	receipt, timelockAddr, err := txsend.Deploy(ctx, client, deployer, data)
+	timelockAddr, receipt, err := timelockop.Deploy(ctx, client, deployer, timelock, delay,
+		addr[vaultconf.TimelockProposer], addr[vaultconf.TimelockCanceller])
 	if err != nil {
 		return fmt.Errorf("deploy the timelock: %w", err)
 	}
-	fmt.Printf("timelock         %s in block %s, delay %d s\n", timelockAddr, receipt.BlockNumber, vaultconf.TimelockDelay)
+	fmt.Printf("timelock         %s in block %s, delay %d s; the proposer proposes and executes, the canceller cancels\n", timelockAddr, receipt.BlockNumber, vaultconf.TimelockDelay)
 
-	data, err = vault.DeployData()
+	data, err := vault.DeployData()
 	if err != nil {
 		return err
 	}

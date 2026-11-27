@@ -7,6 +7,8 @@
 //     release block;
 //   - the guardian pauses the vault: deposits and payments are refused, and the
 //     guardian cannot unpause; the admin unpauses it through the timelock;
+//   - a change the proposer schedules on the timelock is stopped by the canceller, and
+//     the proposer cannot cancel it itself;
 //   - after the release block the operator pays the queued withdrawal;
 //   - the vault's balance, what it accounts for, and what the recipient received are
 //     exact to the wei;
@@ -120,7 +122,7 @@ func run(ctx context.Context, rpcURL, outDir string, preflight bool, mon *monito
 	c := &checker{ctx: ctx, client: client, vault: vault, timelock: timelock, d: d}
 
 	keys := map[rolekeys.Role]*ecdsa.PrivateKey{}
-	for _, r := range []rolekeys.Role{vaultconf.Operator, vaultconf.Guardian, vaultconf.TimelockProposer} {
+	for _, r := range []rolekeys.Role{vaultconf.Operator, vaultconf.Guardian, vaultconf.TimelockProposer, vaultconf.TimelockCanceller} {
 		if keys[r], err = rolekeys.Load(vaultconf.KeysDir, r); err != nil {
 			return err
 		}
@@ -182,6 +184,21 @@ func run(ctx context.Context, rpcURL, outDir string, preflight bool, mon *monito
 		}
 		ok("monitoring answers, no vault alert firing", mon.prometheus)
 	}
+	// The cancel step needs a timelock whose proposer cannot cancel.
+	proposerAddr := crypto.PubkeyToAddress(keys[vaultconf.TimelockProposer].PublicKey)
+	cancellerAddr := crypto.PubkeyToAddress(keys[vaultconf.TimelockCanceller].PublicKey)
+	proposerCancels, err := c.timelockWord("hasRole", timelockop.CancellerRole, proposerAddr)
+	if err != nil {
+		return err
+	}
+	cancellerCancels, err := c.timelockWord("hasRole", timelockop.CancellerRole, cancellerAddr)
+	if err != nil {
+		return err
+	}
+	if proposerCancels != (common.Hash{}) || cancellerCancels == (common.Hash{}) {
+		return fmt.Errorf("the timelock %s does not have its canceller apart from its proposer (make vault-timelock-move)", d.Timelock)
+	}
+	ok("timelock canceller is apart from the proposer", d.Timelock.Hex())
 	if preflight {
 		fmt.Printf("vault-check: preflight ok; vault %s, block %s, paused %v\n", d.Vault, head.Number, paused.Sign() != 0)
 		return nil
@@ -189,7 +206,7 @@ func run(ctx context.Context, rpcURL, outDir string, preflight bool, mon *monito
 
 	// Gas for the keys that send transactions, from the user.
 	targets := []funding.Target{}
-	for _, r := range []rolekeys.Role{vaultconf.Operator, vaultconf.Guardian, vaultconf.TimelockProposer} {
+	for _, r := range []rolekeys.Role{vaultconf.Operator, vaultconf.Guardian, vaultconf.TimelockProposer, vaultconf.TimelockCanceller} {
 		a := crypto.PubkeyToAddress(keys[r].PublicKey)
 		targets = append(targets, funding.Target{Name: string(r), Address: a, Balance: new(big.Int).Div(funding.Ether(1), big.NewInt(50))})
 	}
@@ -285,6 +302,12 @@ func run(ctx context.Context, rpcURL, outDir string, preflight bool, mon *monito
 		return fmt.Errorf("a paid id used again: %w", err)
 	}
 	ok("a paid id is refused", "WithdrawalExists(id, Paid)")
+
+	// A change no one wants, scheduled with the proposer's key as a thief would: the
+	// proposer cannot cancel it, the canceller does, and it is gone from the timelock.
+	if err := c.cancelled(keys[vaultconf.TimelockProposer], keys[vaultconf.TimelockCanceller], tag); err != nil {
+		return err
+	}
 
 	// 4. A large withdrawal, queued.
 	data, err = vault.Call("withdraw", idLarge, vaultconf.Native, recipient, large)
@@ -657,19 +680,91 @@ func (c *checker) waitForBlock(block uint64) error {
 	}
 }
 
+// cancelled schedules a change on the timelock with the proposer's key, shows that the
+// proposer cannot cancel it, cancels it with the canceller's key and checks it is gone.
+func (c *checker) cancelled(proposer, canceller *ecdsa.PrivateKey, tag string) error {
+	// The longest queue delay the vault takes (MAX_WITHDRAWAL_DELAY, 30 days): it would
+	// hold every large withdrawal for a month.
+	change, err := c.vault.Call("setWithdrawalDelay", uint64(1_296_000))
+	if err != nil {
+		return err
+	}
+	salt, none := crypto.Keccak256Hash([]byte(tag+" unwanted change")), common.Hash{}
+	delay := big.NewInt(vaultconf.TimelockDelay)
+	schedule, err := c.timelock.Call("schedule", c.d.Vault, new(big.Int), change, none, salt, delay)
+	if err != nil {
+		return err
+	}
+	receipt, err := txsend.Send(c.ctx, c.client, proposer, c.d.Timelock, new(big.Int), schedule)
+	if err != nil {
+		return fmt.Errorf("schedule the unwanted change: %w", err)
+	}
+	id, err := c.timelockWord("hashOperation", c.d.Vault, new(big.Int), change, none, salt)
+	if err != nil {
+		return err
+	}
+	if w, err := c.timelockWord("isOperationPending", id); err != nil {
+		return err
+	} else if w != common.BigToHash(big.NewInt(1)) {
+		return fmt.Errorf("the unwanted change %x is not pending", id)
+	}
+	ok("proposer scheduled an unwanted change", fmt.Sprintf("operation %x, block %s", id, receipt.BlockNumber))
+	cancel, err := c.timelock.Call("cancel", id)
+	if err != nil {
+		return err
+	}
+	proposerAddr := crypto.PubkeyToAddress(proposer.PublicKey)
+	if err := c.refusedAt(c.timelock, c.d.Timelock, proposerAddr, cancel, nil, "AccessControlUnauthorizedAccount", proposerAddr, [32]byte(timelockop.CancellerRole)); err != nil {
+		return fmt.Errorf("the proposer cancelling: %w", err)
+	}
+	ok("the proposer cannot cancel it", "AccessControlUnauthorizedAccount(proposer, CANCELLER_ROLE)")
+	receipt, err = txsend.Send(c.ctx, c.client, canceller, c.d.Timelock, new(big.Int), cancel)
+	if err != nil {
+		return fmt.Errorf("cancel with the canceller's key: %w", err)
+	}
+	if w, err := c.timelockWord("isOperation", id); err != nil {
+		return err
+	} else if w != (common.Hash{}) {
+		return fmt.Errorf("the change %x is still in the timelock after the cancel", id)
+	}
+	ok("the canceller cancelled it; it is gone", fmt.Sprintf("block %s", receipt.BlockNumber))
+	return nil
+}
+
+// timelockWord calls a view of the timelock that returns one word.
+func (c *checker) timelockWord(method string, args ...any) ([32]byte, error) {
+	data, err := c.timelock.Call(method, args...)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	out, err := c.client.CallContract(c.ctx, ethereum.CallMsg{To: &c.d.Timelock, Data: data}, nil)
+	if err != nil {
+		return [32]byte{}, fmt.Errorf("timelock %s: %w", method, err)
+	}
+	if len(out) != 32 {
+		return [32]byte{}, fmt.Errorf("timelock %s: %d bytes, want 32", method, len(out))
+	}
+	return [32]byte(out), nil
+}
+
 // refused checks that the vault refuses data from `from` with exactly the custom error
 // errName and args, by calling it without sending a transaction.
 func (c *checker) refused(from common.Address, data []byte, value *big.Int, errName string, args ...any) error {
-	e, found := c.vault.ABI.Errors[errName]
+	return c.refusedAt(c.vault, c.d.Vault, from, data, value, errName, args...)
+}
+
+// refusedAt is refused for any contract: the error is looked up in its ABI.
+func (c *checker) refusedAt(a *artifact.Artifact, to common.Address, from common.Address, data []byte, value *big.Int, errName string, args ...any) error {
+	e, found := a.ABI.Errors[errName]
 	if !found {
-		return fmt.Errorf("no error %s in the vault's ABI", errName)
+		return fmt.Errorf("no error %s in the ABI of %s", errName, a.Name)
 	}
 	packed, err := e.Inputs.Pack(args...)
 	if err != nil {
 		return fmt.Errorf("encode %s: %w", errName, err)
 	}
 	want := "0x" + hex.EncodeToString(append(append([]byte{}, e.ID[:4]...), packed...))
-	_, err = c.client.CallContract(c.ctx, ethereum.CallMsg{From: from, To: &c.d.Vault, Value: value, Data: data}, nil)
+	_, err = c.client.CallContract(c.ctx, ethereum.CallMsg{From: from, To: &to, Value: value, Data: data}, nil)
 	if err == nil {
 		return fmt.Errorf("the call succeeds; want %s", errName)
 	}

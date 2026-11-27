@@ -10,7 +10,9 @@
 //     next upgrade is checked;
 //   - the roles: the timelock is the vault's admin, with nothing pending; the operator
 //     and the guardian hold their roles and nothing else; the deployer and the timelock
-//     proposer hold no role on the vault; the timelock administers itself;
+//     proposer and canceller hold no role on the vault; the timelock administers
+//     itself, its proposer proposes and executes but cannot cancel, and its canceller
+//     cancels and nothing else; no move to another timelock is half done;
 //   - the parameters: every delay and the ETH configuration are the ones in
 //     internal/vaultconf, and the vault is not paused;
 //   - the vault's clock: it counts L2 blocks (ERC-6372), and the L2 makes a block every
@@ -41,6 +43,7 @@ import (
 	"github.com/WebOleg/settled/internal/chaincall"
 	"github.com/WebOleg/settled/internal/rolekeys"
 	"github.com/WebOleg/settled/internal/storagelayout"
+	"github.com/WebOleg/settled/internal/timelockop"
 	"github.com/WebOleg/settled/internal/vaultconf"
 )
 
@@ -144,7 +147,7 @@ func run(ctx context.Context, rpcURL, outDir string) (int, int, error) {
 	for _, r := range []struct {
 		role rolekeys.Role
 		name string
-	}{{vaultconf.Operator, "operator"}, {vaultconf.Guardian, "guardian"}, {vaultconf.Deployer, "deployer"}, {vaultconf.TimelockProposer, "timelock proposer"}} {
+	}{{vaultconf.Operator, "operator"}, {vaultconf.Guardian, "guardian"}, {vaultconf.Deployer, "deployer"}, {vaultconf.TimelockProposer, "timelock proposer"}, {vaultconf.TimelockCanceller, "timelock canceller"}} {
 		for _, h := range []struct {
 			hash common.Hash
 			name string
@@ -158,15 +161,36 @@ func run(ctx context.Context, rpcURL, outDir string) (int, int, error) {
 
 	// The timelock.
 	v.number("timelock delay", d.Timelock, "getMinDelay()", vaultconf.TimelockDelay)
+	// The roles are split: the proposer proposes and executes and cannot cancel; the
+	// canceller cancels and can do nothing else.
 	for _, h := range []struct {
-		hash common.Hash
-		name string
-	}{{vaultconf.ProposerRole, "PROPOSER_ROLE"}, {vaultconf.ExecutorRole, "EXECUTOR_ROLE"}, {vaultconf.CancellerRole, "CANCELLER_ROLE"}} {
-		v.role("timelock proposer holds "+h.name, d.Timelock, h.hash, roles[vaultconf.TimelockProposer], true)
+		hash  common.Hash
+		name  string
+		key   rolekeys.Role
+		holds bool
+	}{
+		{timelockop.ProposerRole, "PROPOSER_ROLE", vaultconf.TimelockProposer, true},
+		{timelockop.ExecutorRole, "EXECUTOR_ROLE", vaultconf.TimelockProposer, true},
+		{timelockop.CancellerRole, "CANCELLER_ROLE", vaultconf.TimelockProposer, false},
+		{timelockop.CancellerRole, "CANCELLER_ROLE", vaultconf.TimelockCanceller, true},
+		{timelockop.ProposerRole, "PROPOSER_ROLE", vaultconf.TimelockCanceller, false},
+		{timelockop.ExecutorRole, "EXECUTOR_ROLE", vaultconf.TimelockCanceller, false},
+	} {
+		verb := "holds"
+		if !h.holds {
+			verb = "lacks"
+		}
+		name := strings.ReplaceAll(string(h.key), "-", " ")
+		v.role(fmt.Sprintf("%s %s %s", name, verb, h.name), d.Timelock, h.hash, roles[h.key], h.holds)
 	}
 	v.role("timelock administers itself", d.Timelock, vaultconf.AdminRole, d.Timelock, true)
 	v.role("deployer lacks the timelock admin role", d.Timelock, vaultconf.AdminRole, roles[vaultconf.Deployer], false)
-	v.role("deployer lacks PROPOSER_ROLE", d.Timelock, vaultconf.ProposerRole, roles[vaultconf.Deployer], false)
+	v.role("deployer lacks PROPOSER_ROLE", d.Timelock, timelockop.ProposerRole, roles[vaultconf.Deployer], false)
+	var moving error
+	if d.NextTimelock != nil {
+		moving = fmt.Errorf("a move to timelock %s is in progress; make vault-timelock-move finishes it", d.NextTimelock)
+	}
+	v.report("no timelock move in progress", moving, "none")
 
 	// Parameters.
 	v.number("withdrawal queue delay, in blocks", d.Vault, "withdrawalDelay()", vaultconf.WithdrawalDelay)
