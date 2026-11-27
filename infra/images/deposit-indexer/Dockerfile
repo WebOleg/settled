@@ -11,6 +11,7 @@ RUN GOTOOLCHAIN=local GOFLAGS=-mod=readonly go mod download
 COPY internal/vaultwatch internal/vaultwatch
 COPY internal/ledger internal/ledger
 COPY internal/deposits internal/deposits
+COPY internal/suspense internal/suspense
 COPY cmd/deposit-indexer cmd/deposit-indexer
 RUN CGO_ENABLED=0 GOTOOLCHAIN=local GOFLAGS=-mod=readonly go build -trimpath -ldflags=-s -o /out/deposit-indexer ./cmd/deposit-indexer
 

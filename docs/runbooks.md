@@ -242,6 +242,33 @@ Do:
 - Recompute from the journal, which nobody can change: `ledger_check()` names each
   account and its totals. Correct with transfers, never by editing balances.
 
+## SuspenseUnresolved
+
+A payment left the vault without the ledger, was posted to `suspense:ETH` once final,
+and has waited a day or more without an approved explanation. The ledger still equals
+the vault, but nobody has said whose money it was. It is a ticket, not a page: nothing
+is at risk in the next hour, and it must not wait for weeks.
+
+Look at:
+- `make suspense-list`: each payment not yet explained, its amount, recipient, block,
+  transaction and how long it has waited, and any proposal waiting for a second
+  operator.
+- The transaction on chain and who holds the key that sent it: the vault's operator,
+  or someone acting with it.
+
+Do:
+- Find out what the payment was, with the recipient's owner if they are a customer.
+- One operator proposes, with a reason, with their own login:
+  `go run ./cmd/suspense -db 'postgres://<login>@127.0.0.1:15432/ledger?sslmode=disable' -db-password-file <file> propose -event N -writeoff -reason '...'`
+  for money lost to the exchange, or `-customer customer:<account>:ETH` for a customer
+  paid outside the ledger, whose balance then pays it.
+- A second operator checks it and runs `approve -id N -note '...'`, or `reject -id N
+  -note '...'` with why. The database refuses an approval by the operator who proposed,
+  and moves the money only on approval. On the devnet the two operators are `ops_a` and
+  `ops_b`, with passwords in `.devnet/bridge/ops-a.txt` and `ops-b.txt`.
+- A payment nobody can explain is a security incident: the vault's operator key may be
+  out of the exchange's control. Pause the vault (VaultPaused) before anything else.
+
 ## TargetDown
 
 A client of the devnet has not answered Prometheus for a minute. Its own metrics are

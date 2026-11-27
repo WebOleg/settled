@@ -10,3 +10,4 @@
 !internal/vaultwatch
 !internal/ledger
 !internal/deposits
+!internal/suspense

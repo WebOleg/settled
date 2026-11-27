@@ -66,7 +66,7 @@ targets.
 | Target | Tool | Fails on |
 |---|---|---|
 | `check-docs` | [scripts/check-docs.sh](scripts/check-docs.sh) | CRLF line endings, a missing final newline, trailing spaces outside Markdown, an em dash in Markdown, a relative link to a file that does not exist |
-| `check-images` | [scripts/check-images.sh](scripts/check-images.sh) | a container image in a compose file, a script, the Makefile or a Dockerfile `FROM` that is not pinned by digest |
+| `check-images` | [scripts/check-images.sh](scripts/check-images.sh) | a container image in a compose file, a script, the Makefile or a Dockerfile `FROM` that is not pinned by digest; an image built from the repository whose Dockerfile or `.dockerignore` leaves out a package its command is built from |
 | `check-shell` | shellcheck | any finding in a tracked shell script |
 | `check-secrets` | gitleaks | a secret anywhere in the git history; findings are printed redacted |
 | `check-go` | [scripts/check-go.sh](scripts/check-go.sh): gofmt, go vet, go test | an unformatted file, a vet finding or a failing test; the ledger's tests run against a throwaway PostgreSQL in the pinned image ([scripts/lib/postgres.sh](scripts/lib/postgres.sh)) |

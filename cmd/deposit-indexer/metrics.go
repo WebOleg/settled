@@ -18,14 +18,23 @@ type metrics struct {
 	seen, posted, voided  uint64
 	settled, cancelled    uint64
 	suspense              uint64
-	suspenseWei           string
 	backfilled, backlog   uint64
 	reorgs, steps, errors uint64
 	lastStep              time.Time
 	finalityViolation     bool
-	checkProblems         int
-	pendingDeposits       int64
 	lastCheck             time.Time
+	checks                checked
+}
+
+// checked is what the last check of the books found.
+type checked struct {
+	problems        int
+	pendingDeposits int64
+	suspenseWei     string
+	// suspenseOpen payments in suspense are not yet explained; the oldest has waited
+	// suspenseOldest.
+	suspenseOpen   int64
+	suspenseOldest time.Duration
 }
 
 func (m *metrics) stepped(r deposits.Report) {
@@ -75,10 +84,10 @@ func (m *metrics) violation() bool {
 	return m.finalityViolation
 }
 
-func (m *metrics) checked(problems int, pending int64, suspenseWei string) {
+func (m *metrics) check(c checked) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.checkProblems, m.pendingDeposits, m.suspenseWei = problems, pending, suspenseWei
+	m.checks = c
 	m.lastCheck = time.Now()
 }
 
@@ -116,11 +125,14 @@ func (m *metrics) write(out io.Writer) error {
 	metric("counter", "deposit_indexer_withdrawals_settled_total", "Withdrawals of the ledger paid and final: their holds posted.", m.settled)
 	metric("counter", "deposit_indexer_withdrawals_cancelled_total", "Withdrawals of the ledger cancelled and final: their holds released.", m.cancelled)
 	metric("counter", "deposit_indexer_payments_to_suspense_total", "Final payments the ledger never requested, posted to suspense.", m.suspense)
-	suspense := m.suspenseWei
+	suspense := m.checks.suspenseWei
 	if suspense == "" {
 		suspense = "0"
 	}
 	metric("gauge", "ledger_suspense_wei", "What the suspense account holds: payments that left the vault without the ledger, in wei.", suspense)
+	metric("gauge", "ledger_suspense_open", "Payments in suspense not yet explained by an approved resolution.", m.checks.suspenseOpen)
+	metric("gauge", "ledger_suspense_oldest_seconds", "How long the oldest payment in suspense not yet explained has waited; 0 when none does.",
+		int64(m.checks.suspenseOldest.Seconds()))
 	metric("counter", "deposit_indexer_backfilled_blocks_total", "Final blocks read again for a stream added after they were read.", m.backfilled)
 	metric("gauge", "deposit_indexer_backfill_backlog_blocks", "Blocks a stream added later still has to read again; 0 when every stream is complete.", m.backlog)
 	metric("counter", "deposit_indexer_reorgs_total", "Reorganisations unwound.", m.reorgs)
@@ -128,8 +140,8 @@ func (m *metrics) write(out io.Writer) error {
 	metric("counter", "deposit_indexer_step_errors_total", "Steps that failed; nothing of a failed step is written.", m.errors)
 	metric("gauge", "deposit_indexer_last_step_timestamp_seconds", "When a step last succeeded.", unix(m.lastStep))
 	metric("gauge", "deposit_indexer_finality_violation", "1 once the node's chain no longer has a block held final; the indexer has stopped.", flag(m.finalityViolation))
-	metric("gauge", "deposit_indexer_pending_deposits", "Deposits held, not yet final.", m.pendingDeposits)
-	metric("gauge", "ledger_check_problems", "Differences between the balances and the journal at the last check; 0 when the books are right.", m.checkProblems)
+	metric("gauge", "deposit_indexer_pending_deposits", "Deposits held, not yet final.", m.checks.pendingDeposits)
+	metric("gauge", "ledger_check_problems", "Differences between the balances and the journal at the last check; 0 when the books are right.", m.checks.problems)
 	metric("gauge", "ledger_check_timestamp_seconds", "When the books were last checked against the journal.", unix(m.lastCheck))
 	_, err := io.WriteString(out, b.String())
 	return err

@@ -26,6 +26,8 @@ type DB struct {
 	OwnerURL string
 	// AppURL connects as a login role that holds only the role given to New.
 	AppURL string
+	admin  string
+	name   string
 }
 
 // New creates a database, migrates it with migrate, and makes a login role with
@@ -74,7 +76,40 @@ func New(t *testing.T, migrate func(context.Context, string) (int, error), grant
 	if _, err := conn.Exec(ctx, fmt.Sprintf("GRANT %s TO %s", grant, role)); err != nil {
 		t.Fatalf("ledgertest: grant %s: %v", grant, err)
 	}
-	return DB{OwnerURL: owner, AppURL: withDatabase(t, adminURL, db, role, password)}
+	return DB{OwnerURL: owner, AppURL: withDatabase(t, adminURL, db, role, password), admin: adminURL, name: db}
+}
+
+// Login makes one more login role on the test's database, holding grant, as a second
+// person would have, and returns its connection string. It goes when the test ends.
+func (d DB) Login(t *testing.T, grant string) string {
+	t.Helper()
+	ctx := context.Background()
+	server, err := pgx.Connect(ctx, d.admin)
+	if err != nil {
+		t.Fatalf("ledgertest: connect as admin: %v", err)
+	}
+	defer server.Close(ctx)
+	role, password := "test_login_"+randomHex(t, 6), randomHex(t, 16)
+	if _, err := server.Exec(ctx, fmt.Sprintf("CREATE ROLE %s LOGIN PASSWORD '%s'", role, password)); err != nil {
+		t.Fatalf("ledgertest: create a login: %v", err)
+	}
+	t.Cleanup(func() {
+		c, err := pgx.Connect(context.Background(), d.admin)
+		if err != nil {
+			return
+		}
+		defer c.Close(context.Background())
+		_, _ = c.Exec(context.Background(), "DROP ROLE IF EXISTS "+role)
+	})
+	conn, err := pgx.Connect(ctx, d.OwnerURL)
+	if err != nil {
+		t.Fatalf("ledgertest: connect to the test database: %v", err)
+	}
+	defer conn.Close(ctx)
+	if _, err := conn.Exec(ctx, fmt.Sprintf("GRANT %s TO %s", grant, role)); err != nil {
+		t.Fatalf("ledgertest: grant %s: %v", grant, err)
+	}
+	return withDatabase(t, d.admin, d.name, role, password)
 }
 
 func withDatabase(t *testing.T, raw, db, user, password string) string {

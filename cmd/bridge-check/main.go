@@ -10,6 +10,8 @@
 //   - every WithdrawalPaid event is applied: it settled a withdrawal of the ledger or,
 //     paid without the ledger, went to suspense, and nothing else is applied; no
 //     payment or cancellation at or below that block is still pending;
+//   - suspense holds those payments less the ones explained: each approved resolution
+//     moved its whole payment out to the account it names, and nothing else left;
 //   - the ledger's books agree with its journal (ledger_check);
 //   - what the ledger holds for the vault equals the vault's own accounted(ETH), to the
 //     wei, and is the deposits less the payments.
@@ -335,14 +337,40 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 		ok("withdrawal events backfilled so far", fmt.Sprintf("up to block %d of %d; read live from %d", backfilledTo, liveFrom-1, liveFrom))
 	}
 	ok("every payment on chain is applied, and only those", fmt.Sprintf("%d payments, %s wei: %d settled withdrawals, %d to suspense", len(chainPaid), paid, settled, len(chainPaid)-settled))
+	// Each approved resolution moved its whole payment out of suspense, once, to the
+	// account it names, and nothing else left suspense.
+	var resolutions, badResolutions int
+	resolved := "0"
+	if err := tx.QueryRow(ctx, `SELECT count(*), coalesce(sum(r.amount), 0)::text,
+		count(*) FILTER (WHERE t.id IS NULL OR t.kind <> 'single' OR t.amount <> r.amount OR t.debit_account <> r.account
+			OR t.code <> 'suspense-' || r.kind OR s.name IS DISTINCT FROM $1 OR e.outcome IS DISTINCT FROM 'suspense' OR e.vault <> $2)
+		FROM suspense_resolutions r
+		LEFT JOIN transfers t ON t.id = r.transfer_id
+		LEFT JOIN accounts s ON s.id = t.credit_account
+		LEFT JOIN withdrawal_events e ON e.id = r.event_id
+		WHERE r.status = 'approved'`, deposits.SuspenseAccount("ETH"), d.Vault.Bytes()).Scan(&resolutions, &resolved, &badResolutions); err != nil {
+		return fmt.Errorf("read the resolutions of suspense: %w", err)
+	}
+	if badResolutions != 0 {
+		return fmt.Errorf("%d approved resolutions of suspense do not match the transfer they made", badResolutions)
+	}
+	var outOfSuspense string
+	if err := tx.QueryRow(ctx, `SELECT coalesce(sum(t.amount), 0)::text FROM transfers t JOIN accounts s ON s.id = t.credit_account
+		WHERE s.name = $1`, deposits.SuspenseAccount("ETH")).Scan(&outOfSuspense); err != nil {
+		return fmt.Errorf("read what left suspense: %w", err)
+	}
+	if outOfSuspense != resolved {
+		return fmt.Errorf("%s wei left suspense, the approved resolutions moved %s", outOfSuspense, resolved)
+	}
+	resolvedWei, _ := new(big.Int).SetString(resolved, 10)
 	suspense, err := balance(deposits.SuspenseAccount("ETH"), false)
 	if err != nil {
 		return err
 	}
-	if suspense.Cmp(toSuspense) != 0 {
-		return fmt.Errorf("the suspense account holds %s wei, the payments posted to it are %s", suspense, toSuspense)
+	if want := new(big.Int).Sub(toSuspense, resolvedWei); suspense.Cmp(want) != 0 {
+		return fmt.Errorf("the suspense account holds %s wei; the payments posted to it less those resolved are %s", suspense, want)
 	}
-	ok("suspense holds the payments made without the ledger", fmt.Sprintf("%s wei", suspense))
+	ok("suspense holds the payments not yet explained", fmt.Sprintf("%s wei; %d explained under four eyes, %s wei", suspense, resolutions, resolvedWei))
 
 	vaultHeld, err := balance("vault:ETH", false)
 	if err != nil {

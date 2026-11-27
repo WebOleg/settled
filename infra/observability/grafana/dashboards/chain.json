@@ -981,6 +981,85 @@
     },
     {
       "type": "row",
+      "id": 38,
+      "title": "Overview: is suspense explained?",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "id": 39,
+      "title": "Suspense explained",
+      "description": "Green: every payment that left the vault without the ledger was explained, under four eyes, within a day. Red: one has waited a day or more; the value is how long the oldest has. If red, see the runbook SuspenseUnresolved.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 19
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(ledger_suspense_oldest_seconds{chain=\"l2\"})",
+          "legendFormat": "Suspense explained",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 86400
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "row",
       "id": 11,
       "title": "Details: L2",
       "collapsed": true,
@@ -988,7 +1067,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 24
       },
       "panels": [
         {
@@ -1169,7 +1248,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 19
+        "y": 25
       },
       "panels": [
         {
@@ -1320,7 +1399,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 26
       },
       "panels": [
         {
@@ -1448,7 +1527,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 27
       },
       "panels": [
         {
@@ -1577,7 +1656,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 22
+        "y": 28
       },
       "panels": [
         {
@@ -1706,7 +1785,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 23
+        "y": 29
       },
       "panels": [
         {
@@ -1846,7 +1925,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 24
+        "y": 30
       },
       "panels": [
         {

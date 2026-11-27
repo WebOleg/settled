@@ -25,6 +25,7 @@ import (
 
 	"github.com/WebOleg/settled/internal/deposits"
 	"github.com/WebOleg/settled/internal/ledger"
+	"github.com/WebOleg/settled/internal/suspense"
 	"github.com/WebOleg/settled/internal/vaultwatch"
 )
 
@@ -164,7 +165,8 @@ func step(ctx context.Context, m *metrics, chain deposits.Chain, l *ledger.Ledge
 	return nil
 }
 
-// check runs the ledger's own check and counts what is still held.
+// check runs the ledger's own check, counts what is still held, and reads what waits
+// in suspense.
 func check(ctx context.Context, m *metrics, l *ledger.Ledger) error {
 	problems, err := l.Check(ctx)
 	if err != nil {
@@ -177,11 +179,15 @@ func check(ctx context.Context, m *metrics, l *ledger.Ledger) error {
 	if err := l.Pool().QueryRow(ctx, "SELECT count(*) FROM deposits WHERE status = 'pending'").Scan(&pending); err != nil {
 		return fmt.Errorf("count pending deposits: %w", err)
 	}
-	var suspense string
+	var held string
 	if err := l.Pool().QueryRow(ctx, "SELECT coalesce((SELECT (debits_posted - credits_posted)::text FROM accounts WHERE name = $1), '0')",
-		deposits.SuspenseAccount("ETH")).Scan(&suspense); err != nil {
+		deposits.SuspenseAccount("ETH")).Scan(&held); err != nil {
 		return fmt.Errorf("read the suspense account: %w", err)
 	}
-	m.checked(len(problems), pending, suspense)
+	open, oldest, err := suspense.Oldest(ctx, l.Pool())
+	if err != nil {
+		return fmt.Errorf("read what waits in suspense: %w", err)
+	}
+	m.check(checked{problems: len(problems), pendingDeposits: pending, suspenseWei: held, suspenseOpen: open, suspenseOldest: oldest})
 	return nil
 }

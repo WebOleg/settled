@@ -37,7 +37,7 @@ leaves the chain first. Nothing reaches the ledger before they are final.
 | A final event | The ledger |
 |---|---|
 | A payment of a withdrawal the ledger holds ([withdrawals](withdrawals.md)), to its recipient and for its amount | The hold posted; the withdrawal `settled` |
-| Any other payment: an id the ledger never requested, or a different recipient or amount | Posted from `vault:ETH` to `suspense:ETH`: money that left the vault without the ledger, kept visible until someone explains it, as a bank keeps unmatched items |
+| Any other payment: an id the ledger never requested, or a different recipient or amount | Posted from `vault:ETH` to `suspense:ETH`: money that left the vault without the ledger, kept visible until it is explained under four eyes ([withdrawals](withdrawals.md#payments-in-suspense)), as a bank keeps unmatched items |
 | A cancellation of a withdrawal the ledger holds | The hold released; the withdrawal `cancelled` |
 
 So what the ledger holds for the vault always follows the chain, whatever paid it.
@@ -128,7 +128,8 @@ deposits:
 3. a fourth deposit's signed transaction is put back by `anvil_reorg` into a new block:
    voided in the old block, held in the new one, credited once;
 4. the operator pays half an ETH from the vault without the ledger: once final it is
-   in suspense;
+   in suspense; after the run, `make check-bridge` has two operators explain it with
+   `cmd/suspense`, and the one who proposed cannot approve;
 5. the books agree with the journal, and what the ledger holds for the vault equals
    `accounted(ETH)` of the vault on chain at the finalized block, to the wei.
 

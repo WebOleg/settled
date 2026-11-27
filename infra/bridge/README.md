@@ -13,8 +13,9 @@ deployed (`make vault-deploy`) and waits until then.
 
 | Command | What it does |
 |---|---|
-| `make bridge-up` | Makes the passwords in `.devnet/bridge` on first run, starts PostgreSQL and waits until it is healthy, migrates the schema and sets the indexer's and the auditor's logins with `ledger-migrate`, then builds and starts the indexer |
-| `make bridge-check` | Reconciles the ledger with the chain, read independently as an auditor that can only read: every deposit up to the indexer's last final block posted with its amount and account and nothing else posted, none of them still held, each customer credited what the chain deposited, every payment applied (a settled withdrawal, or suspense when the ledger never requested it) and nothing else, the books agreeing with the journal, and what the ledger holds for the vault equal to the vault's `accounted(ETH)`, to the wei |
+| `make bridge-up` | Makes the passwords in `.devnet/bridge` on first run, starts PostgreSQL and waits until it is healthy, migrates the schema and sets the logins below with `ledger-migrate`, then builds and starts the indexer |
+| `make bridge-check` | Reconciles the ledger with the chain, read independently as an auditor that can only read: every deposit up to the indexer's last final block posted with its amount and account and nothing else posted, none of them still held, each customer credited what the chain deposited, every payment applied (a settled withdrawal, or suspense when the ledger never requested it) and nothing else, suspense holding those payments less the ones explained under four eyes, the books agreeing with the journal, and what the ledger holds for the vault equal to the vault's `accounted(ETH)`, to the wei |
+| `make suspense-list` | Lists the payments in suspense not yet explained, oldest first, with any proposal waiting for a second operator; how to explain one is in [the runbook](../../docs/runbooks.md#suspenseunresolved) |
 | `make deposit-check` | Deposits 0.1 ETH of the devnet user for a new account and follows it through the ledger: held, not spendable, while the verifier's finalized block is below it; credited once it is final, and not before; the books agreeing with the journal. Prints how long each step took; about a quarter of an hour |
 | `make bridge-drill` | Stops PostgreSQL, so the indexer runs but every step fails; shows `DepositIndexerStale` fire and reach Alertmanager, starts PostgreSQL, shows it clear |
 | `make bridge-logs` | Follows the logs of both services |
@@ -38,7 +39,8 @@ was kept for.
 |---|---|---|
 | `admin` | The owner of the schema | `ledger-migrate` |
 | `indexer` | `deposit_indexer`: writes through the ledger's functions, its own blocks and deposits | the indexer |
-| `auditor` | `ledger_reader`: reads every table, writes nothing | `bridge-check`, `deposit-check` |
+| `auditor` | `ledger_reader`: reads every table, writes nothing | `bridge-check`, `deposit-check`, `suspense-list` |
+| `ops_a`, `ops_b` | `suspense_operator`: proposes, approves or rejects the resolution of a payment in suspense, through its functions only | two operators, one login each (`cmd/suspense`) |
 
 Each password is 48 hex characters from `openssl rand`, in a file in `.devnet/bridge`,
 a folder readable by its owner only; services read it as a Docker secret, commands from

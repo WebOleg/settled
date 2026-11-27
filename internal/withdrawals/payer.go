@@ -38,6 +38,13 @@ type Payer struct {
 	// ResendAfter is how long a sent transaction may go unmined before it is sent again,
 	// the same bytes.
 	ResendAfter time.Duration
+	// BumpAfter is how long the latest version of a transaction may go unmined before it
+	// is replaced: the same call under the same nonce, with fees an eighth higher, or the
+	// network's own if they are higher still. Zero never replaces.
+	BumpAfter time.Duration
+	// MaxFeeCap is the most a transaction may offer per gas: a replacement never goes
+	// above it, and nothing is signed while the network asks for more. Required.
+	MaxFeeCap *big.Int
 	// Batch is the most withdrawals one step works on.
 	Batch int
 	// beforeSend, in tests, runs after a transaction is recorded and before it is sent.
@@ -47,6 +54,9 @@ type Payer struct {
 // Report is what one step did.
 type Report struct {
 	Signed, Resent, OnChain, Rejected, Reopened, Waiting int
+	// Bumped are replacements signed; Capped are transactions left as they are because
+	// a replacement would offer more than MaxFeeCap.
+	Bumped, Capped int
 }
 
 func (p *Payer) sender() common.Address { return crypto.PubkeyToAddress(p.Key.PublicKey) }
@@ -55,6 +65,9 @@ func (p *Payer) sender() common.Address { return crypto.PubkeyToAddress(p.Key.Pu
 // transaction only where the vault has nothing for the id yet.
 func (p *Payer) Step(ctx context.Context) (Report, error) {
 	var rep Report
+	if p.MaxFeeCap == nil || p.MaxFeeCap.Sign() <= 0 {
+		return rep, errors.New("withdrawals: the payer needs a MaxFeeCap")
+	}
 	rows, err := p.Ledger.Pool().Query(ctx, `SELECT id FROM withdrawals WHERE vault = $1 AND status IN ('requested', 'onchain')
 		ORDER BY created_at LIMIT $2`, p.Vault.Bytes(), max(p.Batch, 1))
 	if err != nil {
@@ -76,14 +89,26 @@ func (p *Payer) Step(ctx context.Context) (Report, error) {
 	return rep, nil
 }
 
+// open is one version of an open transaction.
 type open struct {
-	id       int64
-	kind     string
-	nonce    uint64
-	hash     common.Hash
-	raw      []byte
-	lastSent *time.Time
+	id    int64
+	kind  string
+	nonce uint64
+	hash  common.Hash
+	raw   []byte
+	// age is how long ago it was recorded; sinceSent how long ago it was last sent, nil
+	// if never. Both by the database's clock.
+	age       time.Duration
+	sinceSent *time.Duration
 }
+
+// slot is an open nonce: its versions in the order they were signed, the latest last.
+type slot struct {
+	nonce    uint64
+	versions []open
+}
+
+func (s slot) latest() open { return s.versions[len(s.versions)-1] }
 
 // work brings the vault to one withdrawal, in one transaction that holds its row.
 // What must be sent is sent after the commit, so a transaction is always recorded
@@ -105,11 +130,11 @@ func (p *Payer) work(ctx context.Context, id common.Hash, rep *Report) error {
 		}
 		amt, _ := new(big.Int).SetString(amount, 10)
 
-		// A transaction stays open until no reorganisation can undo it: mined in a final
-		// block, or its nonce used by a final block. Until then a reorganisation can take
-		// it out of the chain again, and it is sent again, the same bytes, so its nonce is
-		// never left empty. In flight is open and not mined now.
-		pending, err := p.openTxs(ctx, tx, id)
+		// A transaction stays open until no reorganisation can undo it: a version mined in
+		// a final block, or its nonce used by a final block. Until then a reorganisation
+		// can take it out of the chain again, and it is sent again, so its nonce is never
+		// left empty. In flight is open with no version mined now.
+		slots, err := p.openSlots(ctx, tx, id)
 		if err != nil {
 			return err
 		}
@@ -121,20 +146,27 @@ func (p *Payer) work(ctx context.Context, id common.Hash, rep *Report) error {
 		if err != nil {
 			return err
 		}
-		var inFlight []open
-		for _, o := range pending {
-			r, err := p.Chain.Receipt(ctx, o.hash)
-			if err != nil {
-				return err
+		var inFlight []slot
+		for _, s := range slots {
+			var r *Receipt
+			for _, o := range s.versions {
+				if r, err = p.Chain.Receipt(ctx, o.hash); err != nil {
+					return err
+				}
+				if r != nil {
+					break
+				}
 			}
-			if (r != nil && r.Block <= finalBlock) || (r == nil && o.nonce < finalNonce) {
-				if _, err := tx.Exec(ctx, "UPDATE withdrawal_txs SET done = true WHERE id = $1", o.id); err != nil {
-					return fmt.Errorf("withdrawals: close tx %s: %w", o.hash, err)
+			if (r != nil && r.Block <= finalBlock) || (r == nil && s.nonce < finalNonce) {
+				for _, o := range s.versions {
+					if _, err := tx.Exec(ctx, "UPDATE withdrawal_txs SET done = true WHERE id = $1", o.id); err != nil {
+						return fmt.Errorf("withdrawals: close tx %s: %w", o.hash, err)
+					}
 				}
 				continue
 			}
-			if r == nil && o.nonce >= mined {
-				inFlight = append(inFlight, o)
+			if r == nil && s.nonce >= mined {
+				inFlight = append(inFlight, s)
 			}
 		}
 
@@ -147,23 +179,44 @@ func (p *Payer) work(ctx context.Context, id common.Hash, rep *Report) error {
 			if err != nil {
 				return fmt.Errorf("withdrawals: %s to %s: %w", id, s, err)
 			}
+			status = s
 			return nil
 		}
-		resend := func(kind string) bool {
-			for _, o := range inFlight {
+		// resend looks after the transaction of kind in flight, if there is one: replaces
+		// it when it has waited too long, else sends it again when due. Nothing new is
+		// signed while one is in flight.
+		resend := func(kind string) (bool, error) {
+			for _, s := range inFlight {
+				o := s.latest()
 				if o.kind != kind {
 					continue
 				}
-				if o.lastSent == nil || time.Since(*o.lastSent) >= p.ResendAfter {
-					t := new(types.Transaction)
-					if err := t.UnmarshalBinary(o.raw); err == nil {
+				if p.BumpAfter > 0 && o.age >= p.BumpAfter {
+					t, capped, err := p.replace(ctx, tx, id, o)
+					if err != nil {
+						return true, err
+					}
+					if t != nil {
 						toSend = append(toSend, t)
-						rep.Resent++
+						rep.Bumped++
+						return true, nil
+					}
+					rep.Capped++
+					if err := setStatus(status, capped); err != nil {
+						return true, err
 					}
 				}
-				return true // one is in flight; nothing new is signed
+				if o.sinceSent == nil || *o.sinceSent >= p.ResendAfter {
+					t := new(types.Transaction)
+					if err := t.UnmarshalBinary(o.raw); err != nil {
+						return true, fmt.Errorf("withdrawals: decode tx %s: %w", o.hash, err)
+					}
+					toSend = append(toSend, t)
+					rep.Resent++
+				}
+				return true, nil
 			}
-			return false
+			return false, nil
 		}
 
 		switch onChain.Status {
@@ -185,9 +238,15 @@ func (p *Payer) work(ctx context.Context, id common.Hash, rep *Report) error {
 				return err
 			}
 			// The vault pays a queued withdrawal from its release block on.
-			if head+1 < onChain.ReleaseAt || resend("execute") {
+			if head+1 < onChain.ReleaseAt {
 				rep.Waiting++
 				return nil
+			}
+			if busy, err := resend("execute"); err != nil || busy {
+				if err == nil {
+					rep.Waiting++
+				}
+				return err
 			}
 			data, err := VaultABI.Pack("executeQueued", id)
 			if err != nil {
@@ -221,8 +280,8 @@ func (p *Payer) work(ctx context.Context, id common.Hash, rep *Report) error {
 				return err
 			}
 		}
-		if resend("withdraw") {
-			return nil
+		if busy, err := resend("withdraw"); err != nil || busy {
+			return err
 		}
 		data, err := VaultABI.Pack("withdraw", id, common.BytesToAddress(token), common.BytesToAddress(recipient), amt)
 		if err != nil {
@@ -275,19 +334,109 @@ func alreadyKnown(err error) bool {
 	return strings.Contains(s, "already known") || strings.Contains(s, "nonce too low") || strings.Contains(s, "already imported")
 }
 
-func (p *Payer) openTxs(ctx context.Context, tx pgx.Tx, id common.Hash) ([]open, error) {
-	rows, err := tx.Query(ctx, `SELECT id, kind, nonce, hash, raw, last_sent_at FROM withdrawal_txs
-		WHERE withdrawal_id = $1 AND NOT done ORDER BY id`, id.Bytes())
+// openSlots reads the open transactions of a withdrawal, grouped by nonce.
+func (p *Payer) openSlots(ctx context.Context, tx pgx.Tx, id common.Hash) ([]slot, error) {
+	rows, err := tx.Query(ctx, `SELECT id, kind, nonce, hash, raw, extract(epoch FROM now() - created_at)::float8,
+		extract(epoch FROM now() - last_sent_at)::float8 FROM withdrawal_txs
+		WHERE withdrawal_id = $1 AND NOT done ORDER BY nonce, id`, id.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("withdrawals: read txs of %s: %w", id, err)
 	}
-	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (open, error) {
+	versions, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (open, error) {
 		var o open
 		var hash []byte
-		err := r.Scan(&o.id, &o.kind, &o.nonce, &hash, &o.raw, &o.lastSent)
+		var age float64
+		var sinceSent *float64
+		err := r.Scan(&o.id, &o.kind, &o.nonce, &hash, &o.raw, &age, &sinceSent)
 		o.hash = common.BytesToHash(hash)
+		o.age = seconds(age)
+		if sinceSent != nil {
+			d := seconds(*sinceSent)
+			o.sinceSent = &d
+		}
 		return o, err
 	})
+	if err != nil {
+		return nil, fmt.Errorf("withdrawals: read txs of %s: %w", id, err)
+	}
+	var slots []slot
+	for _, o := range versions {
+		if n := len(slots); n > 0 && slots[n-1].nonce == o.nonce {
+			slots[n-1].versions = append(slots[n-1].versions, o)
+			continue
+		}
+		slots = append(slots, slot{nonce: o.nonce, versions: []open{o}})
+	}
+	return slots, nil
+}
+
+func seconds(s float64) time.Duration { return time.Duration(s * float64(time.Second)) }
+
+// bumped is x raised by an eighth, rounded up: above the tenth nodes require for a
+// replacement, with room for the base fee to rise a block's worth meanwhile.
+func bumped(x *big.Int) *big.Int {
+	b := new(big.Int).Mul(x, big.NewInt(9))
+	b.Add(b, big.NewInt(7))
+	return b.Div(b, big.NewInt(8))
+}
+
+// atLeastATenthMore is the rule the database holds a replacement to.
+func atLeastATenthMore(n, old *big.Int) bool {
+	return new(big.Int).Mul(n, big.NewInt(10)).Cmp(new(big.Int).Mul(old, big.NewInt(11))) >= 0
+}
+
+func bigMax(a, b *big.Int) *big.Int {
+	if a.Cmp(b) >= 0 {
+		return a
+	}
+	return b
+}
+
+// replace signs and records a replacement of o: the same call, gas and nonce, with
+// fees raised by an eighth, or the network's if higher, and never above MaxFeeCap.
+// When MaxFeeCap leaves no room for a tenth more, it returns no transaction and why.
+func (p *Payer) replace(ctx context.Context, tx pgx.Tx, id common.Hash, o open) (*types.Transaction, string, error) {
+	old := new(types.Transaction)
+	if err := old.UnmarshalBinary(o.raw); err != nil {
+		return nil, "", fmt.Errorf("withdrawals: decode tx %s: %w", o.hash, err)
+	}
+	tip, feeCap, err := p.Chain.Fees(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	newTip := bigMax(bumped(old.GasTipCap()), tip)
+	newCap := bigMax(bumped(old.GasFeeCap()), feeCap)
+	newCap = bigMax(newCap, newTip)
+	if newCap.Cmp(p.MaxFeeCap) > 0 {
+		newCap = new(big.Int).Set(p.MaxFeeCap)
+		if newTip.Cmp(newCap) > 0 {
+			newTip = new(big.Int).Set(newCap)
+		}
+	}
+	if !atLeastATenthMore(newCap, old.GasFeeCap()) || !atLeastATenthMore(newTip, old.GasTipCap()) {
+		return nil, fmt.Sprintf("unmined at fee cap %s wei, and MaxFeeCap %s leaves no room to replace it", old.GasFeeCap(), p.MaxFeeCap), nil
+	}
+	chainID, err := p.Chain.ChainID(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	t, err := types.SignNewTx(p.Key, types.LatestSignerForChainID(chainID), &types.DynamicFeeTx{
+		ChainID: chainID, Nonce: old.Nonce(), GasTipCap: newTip, GasFeeCap: newCap,
+		Gas: old.Gas(), To: old.To(), Data: old.Data(),
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("withdrawals: sign a replacement: %w", err)
+	}
+	raw, err := t.MarshalBinary()
+	if err != nil {
+		return nil, "", err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO withdrawal_txs (withdrawal_id, kind, sender, nonce, hash, raw, tip_cap, fee_cap, data, replaces)
+		VALUES ($1, $2, $3, $4, $5, $6, $7::numeric, $8::numeric, $9, $10)`,
+		id.Bytes(), o.kind, p.sender().Bytes(), t.Nonce(), t.Hash().Bytes(), raw, newTip.String(), newCap.String(), t.Data(), o.id); err != nil {
+		return nil, "", fmt.Errorf("withdrawals: record the replacement of %s: %w", o.hash, err)
+	}
+	return t, "", nil
 }
 
 // sign checks data against the vault without sending it, then signs it with the next
@@ -306,6 +455,14 @@ func (p *Payer) sign(ctx context.Context, tx pgx.Tx, id common.Hash, kind string
 	if err != nil {
 		return nil, "", err
 	}
+	// A network asking more than MaxFeeCap is waited out, before a nonce is taken.
+	tip, feeCap, err := p.Chain.Fees(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	if feeCap.Cmp(p.MaxFeeCap) > 0 {
+		return nil, fmt.Sprintf("the network asks a fee cap of %s wei, above MaxFeeCap %s", feeCap, p.MaxFeeCap), nil
+	}
 	// The next nonce: the row is locked, so payers that share the key take turns; the
 	// chain's nonce wins when something else used the key.
 	mined, err := p.Chain.Nonce(ctx, from)
@@ -323,10 +480,6 @@ func (p *Payer) sign(ctx context.Context, tx pgx.Tx, id common.Hash, kind string
 	if err != nil {
 		return nil, "", err
 	}
-	tip, feeCap, err := p.Chain.Fees(ctx)
-	if err != nil {
-		return nil, "", err
-	}
 	t, err := types.SignNewTx(p.Key, types.LatestSignerForChainID(chainID), &types.DynamicFeeTx{
 		ChainID: chainID, Nonce: next, GasTipCap: tip, GasFeeCap: feeCap,
 		Gas: gas + gas/5, To: &p.Vault, Data: data,
@@ -341,8 +494,9 @@ func (p *Payer) sign(ctx context.Context, tx pgx.Tx, id common.Hash, kind string
 	if _, err := tx.Exec(ctx, "UPDATE payer_nonces SET next = $2 WHERE sender = $1", from.Bytes(), next+1); err != nil {
 		return nil, "", fmt.Errorf("withdrawals: advance the nonce: %w", err)
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO withdrawal_txs (withdrawal_id, kind, sender, nonce, hash, raw) VALUES ($1, $2, $3, $4, $5, $6)`,
-		id.Bytes(), kind, from.Bytes(), next, t.Hash().Bytes(), raw); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO withdrawal_txs (withdrawal_id, kind, sender, nonce, hash, raw, tip_cap, fee_cap, data)
+		VALUES ($1, $2, $3, $4, $5, $6, $7::numeric, $8::numeric, $9)`,
+		id.Bytes(), kind, from.Bytes(), next, t.Hash().Bytes(), raw, tip.String(), feeCap.String(), data); err != nil {
 		return nil, "", fmt.Errorf("withdrawals: record tx: %w", err)
 	}
 	return t, "", nil

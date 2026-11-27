@@ -240,6 +240,10 @@ func scanAccount(row pgx.Row) (Account, error) {
 	return a, nil
 }
 
+// Classify maps a refusal of the ledger's functions to the package's errors, for code
+// that reaches them through functions of its own.
+func Classify(err error) error { return classify(err) }
+
 // classify maps the database's refusals to the package's errors, keeping the original
 // for its message.
 func classify(err error) error {

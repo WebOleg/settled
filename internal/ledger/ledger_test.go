@@ -260,8 +260,9 @@ func TestLedger_theServiceCannotWriteAroundTheRules(t *testing.T) {
 			t.Fatalf("%s as the service: %v, want permission denied", q, err)
 		}
 	}
-	// Even the owner cannot change the journal.
-	for _, q := range []string{"UPDATE transfers SET amount = 2", "DELETE FROM transfers", "TRUNCATE transfers"} {
+	// Even the owner cannot change the journal. TRUNCATE ... CASCADE, which goes past the
+	// tables that reference transfers, still meets the trigger.
+	for _, q := range []string{"UPDATE transfers SET amount = 2", "DELETE FROM transfers", "TRUNCATE transfers CASCADE"} {
 		if _, err := f.admin.Exec(ctx, q); !errors.Is(classify(err), ErrAppendOnly) {
 			t.Fatalf("%s as the owner: %v, want ErrAppendOnly", q, err)
 		}

@@ -61,10 +61,11 @@ version put sixteen panels on one screen, and it was hard to see where to look. 
 dashboard follows three rules:
 
 1. One screen answers "is the chain healthy?" with six tiles, "is the vault safe?" with
-   four more, and "are deposits credited?" with four more. Each tile asks one
-   question in plain words, shows one number with its unit, and is green or red. There
-   is no third colour to interpret. A tile reads the value now (an instant query) and
-   aggregates it to one series, so it can never split into several numbers.
+   four more, "are deposits credited?" with four more, and "is suspense explained?"
+   with one. Each tile asks one question in plain words, shows one number with its
+   unit, and is green or red. There is no third colour to interpret. A tile reads the
+   value now (an instant query) and aggregates it to one series, so it can never split
+   into several numbers.
 2. Everything else sits below in rows that stay closed until opened. Each tile says
    which row to open when it is red.
 3. The red line of a tile is the threshold of the alert for the same question, so a red
@@ -144,15 +145,17 @@ means and what to do is in [docs/runbooks.md](../runbooks.md).
 | DepositIndexerBehind | Indexer keeps up | 30 or more blocks behind the node's head |
 | DepositFinalityViolation | Finality holds | At once: a block held final left the chain |
 | LedgerOutOfBalance | Ledger balances | At once: the books differ from the journal |
+| SuspenseUnresolved | Suspense explained | At once: a payment has waited in suspense a day or more; a ticket, not a page |
 | TargetDown | none | A client does not answer the scrape |
 
 | Choice | Reason |
 |---|---|
-| One rule per tile, the same query and red line | What is red on screen is what pages, and the reverse. `make obs-check` reads both files and fails if a rule's query is not its tile's query compared with the tile's red line. |
+| One rule per tile, the same query and red line | What is red on screen is what alerts, and the reverse. `make obs-check` reads both files and fails if a rule's query is not its tile's query compared with the tile's red line. |
 | Held for 1 minute | One slow scrape or a late batch does not page anyone; a real stall still does within a minute of the red line. |
 | The vault's alerts at once | They read the chain's state exactly, not a rate, so one reading is the truth. A queued withdrawal has only the queue delay (2 minutes on the devnet) to be checked and cancelled; holding it for a minute would spend half of it. `make vault-check` shows the queue and the pause alerts reach Alertmanager and clear. |
 | TargetDown | A stopped client takes its metrics with it, and a query over missing metrics returns nothing, not red. Only `up == 0` sees that. |
 | Every rule links a section of `docs/runbooks.md` | An alert without a known next step wakes someone up for nothing. `make obs-check` fails on a rule whose section is missing. |
+| Two severities, page and ticket | A page is for what can lose money within the hour. SuspenseUnresolved is a ticket: the books are right, an explanation is owed, and it is held to a day, as suspense items are aged in reconciliation. |
 | One receiver that keeps the alerts, nobody paged | The devnet has no on-call. In production the same rules route `severity=page` to the on-call rotation; only `alertmanager.yml` changes. |
 
 `make obs-check` also shows that Prometheus loaded and evaluates every rule, sends to

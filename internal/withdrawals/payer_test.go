@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -43,13 +44,17 @@ type fakeVault struct {
 	// the head by finalDepth.
 	nonces     map[uint64]map[common.Address]uint64
 	finalDepth uint64
+	// tip and feeCap are what the network asks; a transaction tipping less than minTip
+	// is kept in the mempool and not mined.
+	tip, feeCap, minTip *big.Int
 }
 
 func newFakeVault() *fakeVault {
 	return &fakeVault{chainID: big.NewInt(901), block: 100, nonce: map[common.Address]uint64{},
 		mempool: map[common.Hash]*types.Transaction{}, receipts: map[common.Hash]*Receipt{},
 		records: map[common.Hash]OnChain{}, payments: map[common.Hash]int{}, refuse: map[common.Hash]string{},
-		large: eth(5), delay: 10, nonces: map[uint64]map[common.Address]uint64{}, finalDepth: 3}
+		large: eth(5), delay: 10, nonces: map[uint64]map[common.Address]uint64{}, finalDepth: 3,
+		tip: big.NewInt(1), feeCap: big.NewInt(1_000_000_000), minTip: big.NewInt(0)}
 }
 
 func (f *fakeVault) ChainID(context.Context) (*big.Int, error) { return f.chainID, nil }
@@ -135,7 +140,9 @@ func (f *fakeVault) Finalized(_ context.Context, a common.Address) (uint64, uint
 }
 
 func (f *fakeVault) Fees(context.Context) (*big.Int, *big.Int, error) {
-	return big.NewInt(1), big.NewInt(1_000_000_000), nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.tip, f.feeCap, nil
 }
 
 func (f *fakeVault) Send(_ context.Context, tx *types.Transaction) error {
@@ -146,6 +153,22 @@ func (f *fakeVault) Send(_ context.Context, tx *types.Transaction) error {
 	}
 	if _, ok := f.receipts[tx.Hash()]; ok {
 		return errors.New("already known")
+	}
+	if _, ok := f.mempool[tx.Hash()]; ok {
+		return errors.New("already known")
+	}
+	// A transaction under a nonce already in the mempool replaces it, as nodes do, only
+	// if it pays at least a tenth more.
+	signer := types.LatestSignerForChainID(f.chainID)
+	from, _ := types.Sender(signer, tx)
+	for h, old := range f.mempool {
+		if o, _ := types.Sender(signer, old); o != from || old.Nonce() != tx.Nonce() {
+			continue
+		}
+		if !atLeastATenthMore(tx.GasTipCap(), old.GasTipCap()) || !atLeastATenthMore(tx.GasFeeCap(), old.GasFeeCap()) {
+			return errors.New("replacement transaction underpriced")
+		}
+		delete(f.mempool, h)
 	}
 	f.mempool[tx.Hash()] = tx
 	return nil
@@ -173,7 +196,7 @@ func (f *fakeVault) mine() {
 		sort.Slice(txs, func(i, j int) bool { return txs[i].Nonce() < txs[j].Nonce() })
 		for _, t := range txs {
 			from, _ := types.Sender(signer, t)
-			if t.Nonce() != f.nonce[from] {
+			if t.Nonce() != f.nonce[from] || t.GasTipCap().Cmp(f.minTip) < 0 {
 				continue
 			}
 			err := f.apply(t.Data(), f.block, true)
@@ -245,7 +268,7 @@ func (f *fixture) payer(t *testing.T) *Payer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Payer{Chain: f.chain, Ledger: f.l, Vault: vault, Key: key, ResendAfter: time.Hour, Batch: 100}
+	return &Payer{Chain: f.chain, Ledger: f.l, Vault: vault, Key: key, ResendAfter: time.Hour, MaxFeeCap: big.NewInt(100_000_000_000), Batch: 100}
 }
 
 // fund credits a customer as a final deposit would.
@@ -573,4 +596,183 @@ func TestPayer_payersAtOnceWithOneKeyPayEachOnce(t *testing.T) {
 	}
 	f.balance(t, alice, 30, 100)
 	f.clean(t)
+}
+
+// The network's fees rise above what a sent transaction pays: it is not mined. Once it
+// has waited BumpAfter it is replaced under the same nonce at the network's fees, the
+// replacement is mined, and the withdrawal is paid once with one nonce used.
+func TestPayer_aStuckTransactionIsReplacedAndPaidOnce(t *testing.T) {
+	f := newFixture(t)
+	f.fund(t, alice, 5)
+	w := f.submit(t, "w-1", alice, 1)
+	p := f.payer(t)
+	p.BumpAfter = time.Hour
+	if rep := f.step(t, p); rep.Signed != 1 {
+		t.Fatalf("first step: %+v, want 1 signed", rep)
+	}
+	f.chain.tip, f.chain.minTip = big.NewInt(5), big.NewInt(5)
+	f.chain.mine()
+	if rep := f.step(t, p); rep.Bumped != 0 || rep.Signed != 0 {
+		t.Fatalf("before BumpAfter: %+v, want nothing replaced or signed", rep)
+	}
+	p.BumpAfter = time.Nanosecond
+	if rep := f.step(t, p); rep.Bumped != 1 || rep.Signed != 0 {
+		t.Fatalf("after BumpAfter: %+v, want it replaced", rep)
+	}
+	f.chain.mine()
+	if rep := f.step(t, p); rep.OnChain != 1 || rep.Bumped != 0 {
+		t.Fatalf("after mining the replacement: %+v, want it on chain and nothing replaced", rep)
+	}
+	for range 4 {
+		f.chain.mine()
+		f.step(t, p)
+	}
+	var versions, open, mined int
+	var tip string
+	if err := f.l.Pool().QueryRow(context.Background(), `SELECT count(*), count(*) FILTER (WHERE NOT done),
+		count(DISTINCT nonce), max(tip_cap)::text FROM withdrawal_txs`).Scan(&versions, &open, &mined, &tip); err != nil {
+		t.Fatal(err)
+	}
+	if f.chain.payments[w.ID] != 1 || versions != 2 || open != 0 || mined != 1 || tip != "5" || f.chain.nonce[p.sender()] != 1 {
+		t.Fatalf("%d payments, %d versions (%d open) under %d nonces, top tip %s, account nonce %d; want 1, 2 (0), 1, 5, 1",
+			f.chain.payments[w.ID], versions, open, mined, tip, f.chain.nonce[p.sender()])
+	}
+	f.balance(t, alice, 1, 5)
+	f.clean(t)
+}
+
+// A replacement never offers more than MaxFeeCap: with no room for a tenth more, the
+// transaction is left as it is, sent again when due, and the reason recorded.
+func TestPayer_aReplacementStopsAtMaxFeeCap(t *testing.T) {
+	f := newFixture(t)
+	f.fund(t, alice, 5)
+	w := f.submit(t, "w-1", alice, 1)
+	p := f.payer(t)
+	p.MaxFeeCap = big.NewInt(1_050_000_000) // the first offers 1 gwei: a tenth more is above it
+	f.step(t, p)
+	f.chain.minTip = big.NewInt(5)
+	f.chain.mine()
+	p.BumpAfter, p.ResendAfter = time.Nanosecond, 0
+	if rep := f.step(t, p); rep.Bumped != 0 || rep.Capped != 1 || rep.Resent != 1 {
+		t.Fatalf("at the cap: %+v, want it capped and resent", rep)
+	}
+	var lastErr string
+	if err := f.l.Pool().QueryRow(context.Background(), "SELECT coalesce(last_error, '') FROM withdrawals WHERE id = $1", w.ID.Bytes()).Scan(&lastErr); err != nil {
+		t.Fatal(err)
+	}
+	if lastErr == "" || f.txCount(t) != 1 {
+		t.Fatalf("last error %q, %d transactions; want the reason and 1", lastErr, f.txCount(t))
+	}
+}
+
+// The network asking more than MaxFeeCap is waited out: nothing is signed and no nonce
+// is taken until it asks less.
+func TestPayer_aNetworkAboveMaxFeeCapIsWaitedOut(t *testing.T) {
+	f := newFixture(t)
+	f.fund(t, alice, 5)
+	w := f.submit(t, "w-1", alice, 1)
+	p := f.payer(t)
+	f.chain.feeCap = new(big.Int).Add(p.MaxFeeCap, big.NewInt(1))
+	if rep := f.step(t, p); rep.Signed != 0 || rep.Waiting != 1 || f.txCount(t) != 0 {
+		t.Fatalf("above the cap: %+v, %d transactions; want it waiting and none", rep, f.txCount(t))
+	}
+	f.chain.feeCap = big.NewInt(1_000_000_000)
+	if rep := f.step(t, p); rep.Signed != 1 {
+		t.Fatalf("below the cap again: %+v, want it signed", rep)
+	}
+	f.chain.mine()
+	f.step(t, p)
+	var nonce uint64
+	if err := f.l.Pool().QueryRow(context.Background(), "SELECT nonce FROM withdrawal_txs").Scan(&nonce); err != nil {
+		t.Fatal(err)
+	}
+	if f.chain.payments[w.ID] != 1 || nonce != 0 {
+		t.Fatalf("%d payments at nonce %d; want 1 at 0", f.chain.payments[w.ID], nonce)
+	}
+}
+
+// Any version of a slot may be the one mined: the first is mined after its replacement
+// was recorded but never reached the node. The slot closes once final, and nothing is
+// paid or signed again.
+func TestPayer_theFirstVersionMinedAfterAReplacementClosesTheSlot(t *testing.T) {
+	f := newFixture(t)
+	f.fund(t, alice, 5)
+	w := f.submit(t, "w-1", alice, 1)
+	p := f.payer(t)
+	f.step(t, p)
+	var first common.Hash
+	for h := range f.chain.mempool {
+		first = h
+	}
+	crash := errors.New("crash")
+	p.BumpAfter = time.Nanosecond
+	p.beforeSend = func(*types.Transaction) error { return crash }
+	if _, err := p.Step(context.Background()); !errors.Is(err, crash) {
+		t.Fatalf("step: %v, want the crash", err)
+	}
+	p.beforeSend, p.BumpAfter = nil, 0
+	f.chain.mine() // the node had only the first version
+	if r := f.chain.receipts[first]; r == nil || !r.OK {
+		t.Fatalf("the first version was not mined: %+v", r)
+	}
+	for range 5 {
+		f.chain.mine()
+		if rep := f.step(t, p); rep.Signed != 0 || rep.Bumped != 0 {
+			t.Fatalf("after the first version was mined: %+v, want nothing signed", rep)
+		}
+	}
+	var open int
+	if err := f.l.Pool().QueryRow(context.Background(), "SELECT count(*) FROM withdrawal_txs WHERE NOT done").Scan(&open); err != nil {
+		t.Fatal(err)
+	}
+	if f.chain.payments[w.ID] != 1 || f.txCount(t) != 2 || open != 0 || f.chain.nonce[p.sender()] != 1 {
+		t.Fatalf("%d payments, %d versions, %d open, nonce %d; want 1, 2, 0, 1", f.chain.payments[w.ID], f.txCount(t), open, f.chain.nonce[p.sender()])
+	}
+}
+
+// The database holds the rules of the outbox, whatever the payer does.
+func TestOutbox_theDatabaseRefusesWhatIsNotAReplacement(t *testing.T) {
+	f := newFixture(t)
+	f.fund(t, alice, 5)
+	w := f.submit(t, "w-1", alice, 1)
+	p := f.payer(t)
+	f.step(t, p)
+	ctx := context.Background()
+	var id int64
+	var data []byte
+	if err := f.l.Pool().QueryRow(ctx, "SELECT id, data FROM withdrawal_txs").Scan(&id, &data); err != nil {
+		t.Fatal(err)
+	}
+	insert := func(hash byte, nonce int, tip, feeCap any, data []byte, replaces any) error {
+		_, err := f.l.Pool().Exec(ctx, `INSERT INTO withdrawal_txs (withdrawal_id, kind, sender, nonce, hash, raw, tip_cap, fee_cap, data, replaces)
+			VALUES ($1, 'withdraw', $2, $3, $4, '\x00', $5::numeric, $6::numeric, $7, $8)`,
+			w.ID.Bytes(), p.sender().Bytes(), nonce, common.BytesToHash([]byte{hash}).Bytes(), tip, feeCap, data, replaces)
+		return err
+	}
+	for _, c := range []struct {
+		name, want string
+		err        error
+	}{
+		{"no fees", "records its fees and call", insert(1, 1, nil, nil, nil, nil)},
+		{"a second first version of the slot", "withdrawal_txs_first_of_slot", insert(2, 0, "2", "2000000000", data, nil)},
+		{"less than a tenth more", "at least a tenth more", insert(3, 0, "1", "1050000000", data, id)},
+		{"another call", "is not a replacement", insert(4, 0, "2", "2000000000", []byte{1}, id)},
+		{"another nonce", "is not a replacement", insert(5, 1, "2", "2000000000", data, id)},
+	} {
+		if c.err == nil || !strings.Contains(c.err.Error(), c.want) {
+			t.Errorf("%s: %v, want it refused: %s", c.name, c.err, c.want)
+		}
+	}
+	if err := insert(6, 0, "2", "2000000000", data, id); err != nil {
+		t.Fatalf("a replacement a tenth higher: %v", err)
+	}
+	if err := insert(7, 0, "3", "3000000000", data, id); err == nil || !strings.Contains(err.Error(), "withdrawal_txs_replaces_key") {
+		t.Errorf("a second replacement of the same version: %v, want it refused", err)
+	}
+	if _, err := f.l.Pool().Exec(ctx, "UPDATE withdrawal_txs SET done = true WHERE id = $1", id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.l.Pool().Exec(ctx, "UPDATE withdrawal_txs SET done = false WHERE id = $1", id); err == nil || !strings.Contains(err.Error(), "done once set") {
+		t.Errorf("a closed transaction reopened: %v, want it refused", err)
+	}
 }

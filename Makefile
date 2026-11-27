@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts check-bridge contracts-snapshot contracts-slither-record l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-upgrade vault-timelock-move vault-check vault-reset bridge-up bridge-check deposit-check bridge-drill bridge-logs bridge-down bridge-reset l2-logs l2-down l2-reset
+.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts check-bridge contracts-snapshot contracts-slither-record l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-upgrade vault-timelock-move vault-check vault-reset bridge-up bridge-check suspense-list deposit-check bridge-drill bridge-logs bridge-down bridge-reset l2-logs l2-down l2-reset
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
@@ -58,7 +58,7 @@ check: check-docs check-images check-shell check-secrets check-go check-contract
 check-docs: ## Formatting and documentation rules on every tracked file
 	@scripts/check-docs.sh
 
-check-images: ## Every container image pinned by digest
+check-images: ## Every container image pinned by digest; every image built here gets all its packages
 	@scripts/check-images.sh
 
 check-shell: ## shellcheck on every tracked shell script
@@ -178,13 +178,17 @@ bridge-up: ## Start the ledger's PostgreSQL, migrate it, and start the deposit i
 	@$(BRIDGE) up -d --quiet-pull --wait postgres
 	@go run ./cmd/ledger-migrate -db 'postgres://admin@127.0.0.1:15432/ledger?sslmode=disable' \
 		-db-password-file .devnet/bridge/postgres-admin.txt \
-		-login indexer:deposit_indexer:.devnet/bridge/indexer.txt -login auditor:ledger_reader:.devnet/bridge/auditor.txt
+		-login indexer:deposit_indexer:.devnet/bridge/indexer.txt -login auditor:ledger_reader:.devnet/bridge/auditor.txt \
+		-login ops_a:suspense_operator:.devnet/bridge/ops-a.txt -login ops_b:suspense_operator:.devnet/bridge/ops-b.txt
 	@$(BRIDGE) up -d --quiet-pull --build --remove-orphans deposit-indexer
 	@echo "bridge-up: ok"
 
 bridge-check: ## Reconcile the ledger with the chain, read independently: every final deposit posted, to the wei
 	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/contracts/build.sh
 	@go run ./cmd/bridge-check
+
+suspense-list: ## The payments in suspense not yet explained, and the proposals waiting for a second operator
+	@go run ./cmd/suspense -db 'postgres://auditor@127.0.0.1:15432/ledger?sslmode=disable' -db-password-file .devnet/bridge/auditor.txt list
 
 deposit-check: ## Deposit 0.1 ETH to the vault and follow it: held at once, credited at finality; about 15 minutes
 	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/bridge/deposit-check.sh

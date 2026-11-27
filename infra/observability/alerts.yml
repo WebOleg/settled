@@ -150,6 +150,16 @@ groups:
           summary: A balance in the ledger differs from the sum of its transfers, or debits differ from credits.
           runbook: docs/runbooks.md#ledgeroutofbalance
 
+      - alert: SuspenseUnresolved
+        expr: max(ledger_suspense_oldest_seconds{chain="l2"}) >= 86400
+        for: 0s
+        labels:
+          severity: ticket
+          tile: Suspense explained
+        annotations:
+          summary: A payment that left the vault without the ledger has waited in suspense a day or more without an approved explanation.
+          runbook: docs/runbooks.md#suspenseunresolved
+
       - alert: TargetDown
         expr: up == 0
         for: 1m
