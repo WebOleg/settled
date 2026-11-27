@@ -982,7 +982,7 @@
     {
       "type": "row",
       "id": 38,
-      "title": "Overview: is suspense explained?",
+      "title": "Overview: are withdrawals paid?",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -991,6 +991,204 @@
         "y": 18
       },
       "panels": []
+    },
+    {
+      "type": "stat",
+      "id": 40,
+      "title": "Payer is running",
+      "description": "Green: the withdrawal payer completed a step in the last minute. Red: it did not, and no withdrawal is paid, sent again or replaced. If red, see the runbook WithdrawalPayerStale.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 19
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - max(withdrawal_payer_last_step_timestamp_seconds{chain=\"l2\"})",
+          "legendFormat": "Payer is running",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 60
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 41,
+      "title": "Withdrawals are paid",
+      "description": "Green: every withdrawal requested has something on chain for it within 10 minutes; the value is how long the oldest waiting has. Red: one has waited 10 minutes or more. If red, see the runbook WithdrawalsWaiting.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 19
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(withdrawal_payer_oldest_requested_seconds{chain=\"l2\"})",
+          "legendFormat": "Withdrawals are paid",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 600
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 42,
+      "title": "Payer has gas",
+      "description": "Green: the withdrawal payer's key holds 0.01 ETH or more for gas on the L2. Red: less, and soon nothing it signs is mined. If red, see the runbook PayerFundsLow.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 19
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "min(withdrawal_payer_balance_wei{chain=\"l2\"}) / 1e18",
+          "legendFormat": "Payer has gas",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: ETH",
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0.01
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
     },
     {
       "type": "stat",
@@ -1004,7 +1202,7 @@
       "gridPos": {
         "h": 5,
         "w": 6,
-        "x": 0,
+        "x": 18,
         "y": 19
       },
       "targets": [

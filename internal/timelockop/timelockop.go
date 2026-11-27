@@ -110,26 +110,45 @@ type Op struct {
 const PollInterval = 2 * time.Second
 
 // Run schedules op with delay from key, waits until it is ready, executes it, and
-// returns the execution receipt and the operation id. Before each step, progress is
-// passed to report.
+// returns the execution receipt and the operation id. An operation scheduled already is
+// not scheduled again, and one done already returns no receipt. Before each step,
+// progress is passed to report.
 func Run(ctx context.Context, client *ethclient.Client, key *ecdsa.PrivateKey, timelock *artifact.Artifact,
 	at common.Address, op Op, delay *big.Int, report func(string),
 ) (*types.Receipt, common.Hash, error) {
 	if op.Value == nil {
 		op.Value = new(big.Int)
 	}
-	schedule, err := timelock.Call("schedule", op.Target, op.Value, op.Data, op.Predecessor, op.Salt, delay)
-	if err != nil {
-		return nil, common.Hash{}, err
-	}
-	if _, err := txsend.Send(ctx, client, key, at, new(big.Int), schedule); err != nil {
-		return nil, common.Hash{}, fmt.Errorf("timelockop: schedule: %w", err)
-	}
 	id, err := word(ctx, client, timelock, at, "hashOperation", op.Target, op.Value, op.Data, op.Predecessor, op.Salt)
 	if err != nil {
 		return nil, common.Hash{}, err
 	}
-	report(fmt.Sprintf("scheduled operation %s; waiting %s s", id, delay))
+	// A run that stopped after scheduling goes on from there: the same operation cannot be
+	// scheduled twice, and one done is not run again.
+	done, err := word(ctx, client, timelock, at, "isOperationDone", id)
+	if err != nil {
+		return nil, id, err
+	}
+	if done == common.BigToHash(big.NewInt(1)) {
+		report(fmt.Sprintf("operation %s is done already", id))
+		return nil, id, nil
+	}
+	scheduled, err := word(ctx, client, timelock, at, "isOperation", id)
+	if err != nil {
+		return nil, id, err
+	}
+	if scheduled == common.BigToHash(big.NewInt(1)) {
+		report(fmt.Sprintf("operation %s was scheduled already; waiting until it is ready", id))
+	} else {
+		schedule, err := timelock.Call("schedule", op.Target, op.Value, op.Data, op.Predecessor, op.Salt, delay)
+		if err != nil {
+			return nil, id, err
+		}
+		if _, err := txsend.Send(ctx, client, key, at, new(big.Int), schedule); err != nil {
+			return nil, id, fmt.Errorf("timelockop: schedule: %w", err)
+		}
+		report(fmt.Sprintf("scheduled operation %s; waiting %s s", id, delay))
+	}
 
 	tick := time.NewTicker(PollInterval)
 	defer tick.Stop()
@@ -155,7 +174,7 @@ func Run(ctx context.Context, client *ethclient.Client, key *ecdsa.PrivateKey, t
 	if err != nil {
 		return nil, id, fmt.Errorf("timelockop: execute: %w", err)
 	}
-	done, err := word(ctx, client, timelock, at, "isOperationDone", id)
+	done, err = word(ctx, client, timelock, at, "isOperationDone", id)
 	if err != nil {
 		return receipt, id, err
 	}

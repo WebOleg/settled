@@ -42,12 +42,14 @@ import (
 	"github.com/WebOleg/settled/internal/anvil"
 	"github.com/WebOleg/settled/internal/deposits"
 	"github.com/WebOleg/settled/internal/ledger"
+	"github.com/WebOleg/settled/internal/vaultconf"
 	"github.com/WebOleg/settled/internal/withdrawals"
 )
 
 func main() {
 	rpcURL := flag.String("rpc", "http://127.0.0.1:8545", "anvil's JSON-RPC")
 	outDir := flag.String("out", "contracts/out", "forge build output")
+	recordRoot := flag.String("record", "", "if set, a folder to write the vault's deployment record under, as vault-deploy does, for bridge-check")
 	var dbs [3]struct{ url, password *string }
 	for i, role := range []string{"requester", "payer", "indexer"} {
 		dbs[i].url = flag.String(role+"-db", "", "the ledger database as the "+role+"'s login, without the password")
@@ -68,7 +70,7 @@ func main() {
 		}
 		defer conns[i].Close()
 	}
-	if err := run(ctx, *rpcURL, *outDir, conns[0], conns[1], conns[2]); err != nil {
+	if err := run(ctx, *rpcURL, *outDir, *recordRoot, conns[0], conns[1], conns[2]); err != nil {
 		fail(err)
 	}
 	fmt.Println("payer-e2e: ok")
@@ -112,7 +114,7 @@ type e2e struct {
 	ids       []common.Hash
 }
 
-func run(ctx context.Context, rpcURL, outDir string, requester, payerDB, indexerDB *ledger.Ledger) error {
+func run(ctx context.Context, rpcURL, outDir, recordRoot string, requester, payerDB, indexerDB *ledger.Ledger) error {
 	client, err := ethclient.DialContext(ctx, rpcURL)
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", rpcURL, err)
@@ -136,6 +138,19 @@ func run(ctx context.Context, rpcURL, outDir string, requester, payerDB, indexer
 		return err
 	}
 	ok("vault deployed behind its proxy, its limit full", fmt.Sprintf("%s, block %d", vault.At, vault.Block))
+	if recordRoot != "" {
+		genesis, err := client.HeaderByNumber(ctx, big.NewInt(0))
+		if err != nil {
+			return err
+		}
+		id, err := client.ChainID(ctx)
+		if err != nil {
+			return err
+		}
+		if err := vaultconf.WriteDeployment(recordRoot, &vaultconf.Deployment{ChainID: id.Uint64(), L2Genesis: genesis.Hash(), Vault: vault.At, Block: vault.Block}); err != nil {
+			return err
+		}
+	}
 
 	e := &e2e{ctx: ctx, client: client, vault: vault, requester: requester, payer: payerDB, operator: keys[1],
 		account: common.HexToHash("0xbeef"), paid: new(big.Int),

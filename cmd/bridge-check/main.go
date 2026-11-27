@@ -6,7 +6,9 @@
 //   - every Deposited event of the vault is a posted deposit in the ledger, with its
 //     amount and account, and the ledger has no posted deposit the chain does not;
 //   - no deposit at or below that block is still held;
-//   - each customer's credited balance is the sum of the chain's deposits for it;
+//   - each customer is credited the sum of the chain's deposits for it, and debited the
+//     chain's payments of its settled withdrawals, to the recipient and for the amount
+//     it asked, and what suspense resolutions under four eyes charged it;
 //   - every WithdrawalPaid event is applied: it settled a withdrawal of the ledger or,
 //     paid without the ledger, went to suspense, and nothing else is applied; no
 //     payment or cancellation at or below that block is still pending;
@@ -26,7 +28,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"sort"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -67,6 +68,9 @@ type entry struct {
 	account common.Hash
 	amount  *big.Int
 	number  uint64
+	// A payment's withdrawal id and recipient.
+	id        common.Hash
+	recipient common.Address
 }
 
 func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
@@ -250,12 +254,12 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 			}
 			if e.Kind == deposits.KindPaid {
 				if e.Block <= horizon {
-					chainPaid[key{e.BlockHash, e.LogIndex}] = entry{amount: e.Amount, number: e.Block}
+					chainPaid[key{e.BlockHash, e.LogIndex}] = entry{amount: e.Amount, number: e.Block, id: e.WithdrawalID, recipient: e.Recipient}
 					paid.Add(paid, e.Amount)
 				}
 				continue
 			}
-			chain[key{e.BlockHash, e.LogIndex}] = entry{e.Account, e.Amount, e.Block}
+			chain[key{e.BlockHash, e.LogIndex}] = entry{account: e.Account, amount: e.Amount, number: e.Block}
 			total.Add(total, e.Amount)
 			if perAccount[e.Account] == nil {
 				perAccount[e.Account] = new(big.Int)
@@ -284,22 +288,6 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 		return fmt.Errorf("%d deposits at or below the final block %d are still held", stillHeld, final)
 	}
 	ok("none final is still held", "0")
-
-	accounts := make([]common.Hash, 0, len(perAccount))
-	for a := range perAccount {
-		accounts = append(accounts, a)
-	}
-	sort.Slice(accounts, func(i, j int) bool { return accounts[i].Hex() < accounts[j].Hex() })
-	for _, a := range accounts {
-		got, err := balance(deposits.CustomerAccount(a, "ETH"), true)
-		if err != nil {
-			return err
-		}
-		if got.Cmp(perAccount[a]) != 0 {
-			return fmt.Errorf("customer %s is credited %v wei, the chain deposited %s", a, got, perAccount[a])
-		}
-	}
-	ok("each customer is credited what the chain deposited", fmt.Sprintf("%d accounts", len(accounts)))
 
 	if len(problems) != 0 {
 		return fmt.Errorf("the books disagree with the journal: %v", problems)
@@ -333,6 +321,87 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 	if eventsPending != 0 {
 		return fmt.Errorf("%d payments or cancellations at or below block %d are still pending", eventsPending, horizon)
 	}
+
+	// Customer by customer: what each was credited is what the chain deposited for it,
+	// and what each was debited is what the chain paid for its settled withdrawals, to
+	// the recipient and for the amount it asked, and what it was charged in suspense
+	// resolutions approved under four eyes.
+	creditOf := map[string]*big.Int{}
+	debitOf := map[string]*big.Int{}
+	add := func(m map[string]*big.Int, name string, v *big.Int) {
+		if m[name] == nil {
+			m[name] = new(big.Int)
+		}
+		m[name].Add(m[name], v)
+	}
+	for a, v := range perAccount {
+		add(creditOf, deposits.CustomerAccount(a, "ETH"), v)
+	}
+	withdrawn := 0
+	for k, c := range chainPaid {
+		if appliedPaid[k].outcome != "settled" {
+			continue
+		}
+		var account, recipient []byte
+		var amount, status string
+		if err := tx.QueryRow(ctx, "SELECT account, recipient, amount::text, status FROM withdrawals WHERE id = $1 AND vault = $2",
+			c.id.Bytes(), d.Vault.Bytes()).Scan(&account, &recipient, &amount, &status); err != nil {
+			return fmt.Errorf("the settled payment at block %d names withdrawal %s: %w", c.number, c.id, err)
+		}
+		if a, _ := new(big.Int).SetString(amount, 10); status != "settled" || common.BytesToAddress(recipient) != c.recipient || a.Cmp(c.amount) != 0 {
+			return fmt.Errorf("the payment at block %d paid %s wei to %s; withdrawal %s is %s, for %s wei to %s",
+				c.number, c.amount, c.recipient, c.id, status, amount, common.BytesToAddress(recipient))
+		}
+		add(debitOf, deposits.CustomerAccount(common.BytesToHash(account), "ETH"), c.amount)
+		withdrawn++
+	}
+	rows, err = tx.Query(ctx, `SELECT a.name, r.amount::text FROM suspense_resolutions r JOIN accounts a ON a.id = r.account
+		WHERE r.status = 'approved' AND r.kind = 'customer'`)
+	if err != nil {
+		return fmt.Errorf("read the resolutions charged to customers: %w", err)
+	}
+	for rows.Next() {
+		var name, amount string
+		if err := rows.Scan(&name, &amount); err != nil {
+			rows.Close()
+			return err
+		}
+		v, _ := new(big.Int).SetString(amount, 10)
+		add(debitOf, name, v)
+	}
+	rows.Close()
+	rows, err = tx.Query(ctx, "SELECT name, credits_posted::text, debits_posted::text FROM accounts WHERE name LIKE 'customer:%' ORDER BY name")
+	if err != nil {
+		return fmt.Errorf("read the customers: %w", err)
+	}
+	customers := 0
+	for rows.Next() {
+		var name, credits, debits string
+		if err := rows.Scan(&name, &credits, &debits); err != nil {
+			rows.Close()
+			return err
+		}
+		customers++
+		c, _ := new(big.Int).SetString(credits, 10)
+		dd, _ := new(big.Int).SetString(debits, 10)
+		wantC, wantD := creditOf[name], debitOf[name]
+		if wantC == nil {
+			wantC = new(big.Int)
+		}
+		if wantD == nil {
+			wantD = new(big.Int)
+		}
+		if c.Cmp(wantC) != 0 || dd.Cmp(wantD) != 0 {
+			rows.Close()
+			return fmt.Errorf("%s: credited %s, debited %s wei; the chain deposited %s for it and paid %s", name, c, dd, wantC, wantD)
+		}
+		delete(creditOf, name)
+	}
+	rows.Close()
+	if len(creditOf) != 0 {
+		return fmt.Errorf("%d accounts the chain deposited for have no customer account in the ledger", len(creditOf))
+	}
+	ok("each customer: credited what the chain deposited", fmt.Sprintf("%d accounts; debited for %d settled withdrawals, as paid on chain", customers, withdrawn))
 	if backfilling {
 		ok("withdrawal events backfilled so far", fmt.Sprintf("up to block %d of %d; read live from %d", backfilledTo, liveFrom-1, liveFrom))
 	}

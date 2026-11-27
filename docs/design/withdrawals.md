@@ -135,6 +135,17 @@ the oldest with nothing on chain has waited; the transactions open; what its key
 for gas. Its image ([Dockerfile](../../infra/images/withdrawal-payer/Dockerfile)) is
 built like the indexer's: pinned bases, no shell, an unprivileged user.
 
+On the devnet it runs in the bridge service ([compose.yaml](../../infra/bridge/compose.yaml))
+with a key of its own, which holds the vault's operator role and nothing else, granted
+through the timelock ([cmd/vault-payer](../../cmd/vault-payer/main.go)); the operator key
+`make vault-check` uses is another, so the two never share nonces. It sends to the
+sequencer and connects as a login that holds only `withdrawal_payer`. Three alerts watch
+it: WithdrawalPayerStale, WithdrawalsWaiting and PayerFundsLow
+([runbooks](../runbooks.md#withdrawalpayerstale)). `make withdrawal-check`
+([cmd/withdrawal-check](../../cmd/withdrawal-check/main.go)) sends one real withdrawal
+through it: a deposit credited once final, a request held at once, paid by the service,
+still held until the payment is final, then settled.
+
 ## Payments in suspense
 
 A payment the ledger never requested, made with the operator's key outside the payer,
@@ -183,4 +194,4 @@ transfer it made.
 | Limit | Why it is accepted here |
 |---|---|
 | A payment in suspense is resolved whole, to one account. | A payment that is part a customer's and part a loss is rare; resolving in parts is not built, and such a payment stays in suspense, visible and alerted on, until it is. |
-| The operator key also signs for `make vault-check` on the devnet. | A payer takes the chain's nonce when it is ahead of its own, so a run of vault-check between two steps costs nothing; at the same moment, one transaction fails and is sent again. |
+| The payer's key is a file, read by its container as a Docker secret. | It holds only the operator role, so at most the rate limit can leave at once, and large amounts wait in the queue for the guardian. In production the key stays in an HSM or a signing service (KMS, MPC) and the payer asks it to sign; `sign` and `replace` are the two places that would call it. |

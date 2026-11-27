@@ -38,10 +38,14 @@ const (
 	// TimelockCanceller can only cancel what the proposer scheduled, so a stolen
 	// proposer key is answered within the delay.
 	TimelockCanceller rolekeys.Role = "timelock-canceller"
+	// Payer is the withdrawal payer's own key (cmd/withdrawal-payer): it holds the
+	// operator role and nothing else, granted through the timelock (cmd/vault-payer), so
+	// the service and the operator's checks never share a key or its nonces.
+	Payer rolekeys.Role = "payer"
 )
 
 // Roles lists the keys of the vault.
-var Roles = []rolekeys.Role{Deployer, Operator, Guardian, TimelockProposer, TimelockCanceller}
+var Roles = []rolekeys.Role{Deployer, Operator, Guardian, TimelockProposer, TimelockCanceller, Payer}
 
 // Devnet parameters. Production keeps the same structure with longer delays (days for
 // the timelock and the admin handover, hours for the queue) and limits set from the

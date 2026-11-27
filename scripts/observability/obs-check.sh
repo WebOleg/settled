@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Shows that Prometheus scrapes every client of the devnet, the vault exporter and the
-# deposit indexer: each of the eleven targets is up, and each job reports series. Then
+# Shows that Prometheus scrapes every client of the devnet, the vault exporter, the
+# deposit indexer and the withdrawal payer: each of the twelve targets is up, and each
+# job reports series. Then
 # Grafana: it is healthy, the admin password from obs-init.sh works, an anonymous
 # visitor can read the dashboard but not change it, and every query of every panel
 # returns data and shows only live series. Then the alerts: every rule is loaded,
@@ -11,7 +12,7 @@ set -euo pipefail
 PROM="http://127.0.0.1:9090"
 GRAFANA="http://127.0.0.1:3000"
 ALERTMANAGER="http://127.0.0.1:9093"
-EXPECTED_TARGETS=11
+EXPECTED_TARGETS=12
 root="$(git rev-parse --show-toplevel)"
 DASHBOARD="$root/infra/observability/grafana/dashboards/chain.json"
 RULES="$root/infra/observability/alerts.yml"
@@ -47,7 +48,7 @@ echo "targets          $up of $total up"
 series="$(query 'count by (job) ({__name__=~".+", job!=""})')" || fail "query failed"
 printf '%s' "$series" | jq -r '.data.result[] | "series           \(.metric.job): \(.value[1])"' | sort
 jobs="$(printf '%s' "$series" | jq '.data.result | length')"
-[ "$jobs" -eq 9 ] || fail "$jobs jobs report series, want 9"
+[ "$jobs" -eq 10 ] || fail "$jobs jobs report series, want 10"
 
 # Grafana.
 waited=0

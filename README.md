@@ -14,7 +14,7 @@ Everything runs on one machine and needs no cloud account.
 
 ## Status
 
-Stages 1 to 4 are done. A local proof-of-stake L1 runs, the L2 contracts are deployed
+Stages 1 to 5 are done. A local proof-of-stake L1 runs, the L2 contracts are deployed
 on it, the L2 sequencer produces blocks and the batcher posts them to the L1 as blobs,
 so the L2 safe head follows the L1. A verifier node derives the same chain from the L1
 and receives new blocks from the sequencer over peer-to-peer. The proposer posts the L2
@@ -26,7 +26,12 @@ On the L2 a vault holds an exchange's funds: each withdrawal id is paid once, pa
 at once stay within a rate limit, large ones wait in a queue the guardian can stop, and
 every change of its rules waits in a timelock where a separate key can cancel it. Unit,
 fuzz, invariant and symbolic tests check its invariants, and a written review lists
-every finding.
+every finding. A double-entry ledger in PostgreSQL keeps the exchange's books: the
+deposit indexer credits a deposit only once it is final and reverses what a
+reorganisation removes; the withdrawal payer pays each withdrawal once through crashes,
+reorganisations, fee rises and payers running at once; a payment made without the
+ledger waits in suspense until two operators explain it; and the ledger equals what
+the vault on chain accounts for, to the wei.
 This file describes only what exists and grows with the code.
 
 The rules the code follows are in [ENGINEERING.md](ENGINEERING.md). The plan is in

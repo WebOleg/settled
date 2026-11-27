@@ -9,7 +9,8 @@
 //   - the deployment record holds the storage layout of that build, against which the
 //     next upgrade is checked;
 //   - the roles: the timelock is the vault's admin, with nothing pending; the operator
-//     and the guardian hold their roles and nothing else; the deployer and the timelock
+//     and the guardian hold their roles and nothing else, and so does the withdrawal
+//     payer's own key, the operator role; the deployer and the timelock
 //     proposer and canceller hold no role on the vault; the timelock administers
 //     itself, its proposer proposes and executes but cannot cancel, and its canceller
 //     cancels and nothing else; no move to another timelock is half done;
@@ -144,15 +145,16 @@ func run(ctx context.Context, rpcURL, outDir string) (int, int, error) {
 	v.number("admin handover delay", d.Vault, "defaultAdminDelay()", vaultconf.AdminDelay)
 	v.role("operator holds OPERATOR_ROLE", d.Vault, vaultconf.OperatorRole, roles[vaultconf.Operator], true)
 	v.role("guardian holds GUARDIAN_ROLE", d.Vault, vaultconf.GuardianRole, roles[vaultconf.Guardian], true)
+	v.role("payer holds OPERATOR_ROLE (make vault-payer)", d.Vault, vaultconf.OperatorRole, roles[vaultconf.Payer], true)
 	for _, r := range []struct {
 		role rolekeys.Role
 		name string
-	}{{vaultconf.Operator, "operator"}, {vaultconf.Guardian, "guardian"}, {vaultconf.Deployer, "deployer"}, {vaultconf.TimelockProposer, "timelock proposer"}, {vaultconf.TimelockCanceller, "timelock canceller"}} {
+	}{{vaultconf.Operator, "operator"}, {vaultconf.Payer, "payer"}, {vaultconf.Guardian, "guardian"}, {vaultconf.Deployer, "deployer"}, {vaultconf.TimelockProposer, "timelock proposer"}, {vaultconf.TimelockCanceller, "timelock canceller"}} {
 		for _, h := range []struct {
 			hash common.Hash
 			name string
 		}{{vaultconf.OperatorRole, "OPERATOR_ROLE"}, {vaultconf.GuardianRole, "GUARDIAN_ROLE"}, {vaultconf.AdminRole, "DEFAULT_ADMIN_ROLE"}} {
-			if (r.role == vaultconf.Operator && h.name == "OPERATOR_ROLE") || (r.role == vaultconf.Guardian && h.name == "GUARDIAN_ROLE") {
+			if ((r.role == vaultconf.Operator || r.role == vaultconf.Payer) && h.name == "OPERATOR_ROLE") || (r.role == vaultconf.Guardian && h.name == "GUARDIAN_ROLE") {
 				continue
 			}
 			v.role(fmt.Sprintf("%s lacks %s on the vault", r.name, h.name), d.Vault, h.hash, roles[r.role], false)

@@ -150,6 +150,36 @@ groups:
           summary: A balance in the ledger differs from the sum of its transfers, or debits differ from credits.
           runbook: docs/runbooks.md#ledgeroutofbalance
 
+      - alert: WithdrawalPayerStale
+        expr: time() - max(withdrawal_payer_last_step_timestamp_seconds{chain="l2"}) >= 60
+        for: 1m
+        labels:
+          severity: page
+          tile: Payer is running
+        annotations:
+          summary: The withdrawal payer has not completed a step for a minute; no withdrawal is paid, sent again or replaced.
+          runbook: docs/runbooks.md#withdrawalpayerstale
+
+      - alert: WithdrawalsWaiting
+        expr: max(withdrawal_payer_oldest_requested_seconds{chain="l2"}) >= 600
+        for: 1m
+        labels:
+          severity: page
+          tile: Withdrawals are paid
+        annotations:
+          summary: A withdrawal has waited 10 minutes or more with nothing on chain for it; the payer runs but cannot pay it.
+          runbook: docs/runbooks.md#withdrawalswaiting
+
+      - alert: PayerFundsLow
+        expr: min(withdrawal_payer_balance_wei{chain="l2"}) / 1e18 < 0.01
+        for: 1m
+        labels:
+          severity: page
+          tile: Payer has gas
+        annotations:
+          summary: The withdrawal payer's key holds less than 0.01 ETH for gas on the L2; it will soon sign nothing that is mined.
+          runbook: docs/runbooks.md#payerfundslow
+
       - alert: SuspenseUnresolved
         expr: max(ledger_suspense_oldest_seconds{chain="l2"}) >= 86400
         for: 0s

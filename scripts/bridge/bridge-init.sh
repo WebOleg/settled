@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Creates the bridge's passwords once, in .devnet/bridge: the PostgreSQL admin's, the
-# deposit indexer's, the auditor's (bridge-check) and those of the two operators who
-# resolve suspense under four eyes (ops_a, ops_b). The folder is readable by its
+# deposit indexer's, the withdrawal payer's, the requester's (withdrawal-check), the
+# auditor's (bridge-check) and those of the two operators who resolve suspense under
+# four eyes (ops_a, ops_b). The folder is readable by its
 # owner only (700). The files are 644, because PostgreSQL and the indexer read them as
 # their own users inside their containers; the folder keeps everyone else on this
 # machine out. Never prints a password. With --reset, deletes the folder.
@@ -22,7 +23,7 @@ fi
 mkdir -p "$dir"
 chmod 700 "$dir"
 mode() { stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"; }
-for name in postgres-admin indexer auditor ops-a ops-b; do
+for name in postgres-admin indexer payer requester auditor ops-a ops-b; do
   file="$dir/$name.txt"
   if [ ! -f "$file" ]; then
     (umask 077 && openssl rand -hex 24 > "$file")

@@ -1,6 +1,7 @@
-# The bridge service of the devnet: the ledger's PostgreSQL and the deposit indexer
-# (docs/design/deposits.md). PostgreSQL is published on 127.0.0.1 only, for
-# ledger-migrate and bridge-check; the indexer's metrics port is not published.
+# The bridge service of the devnet: the ledger's PostgreSQL, the deposit indexer
+# (docs/design/deposits.md) and the withdrawal payer (docs/design/withdrawals.md).
+# PostgreSQL is published on 127.0.0.1 only, for ledger-migrate and the checks; the
+# services' metrics ports are not published.
 # Passwords are read from files in .devnet/bridge that bridge-init.sh writes once; they
 # are not in this file, an env file or docker inspect. Images are pinned by digest,
 # the indexer's base images too. scripts/lib/postgres.sh takes the PostgreSQL image for
@@ -63,8 +64,40 @@ services:
     volumes:
       - ../../.devnet/vault/record:/vault:ro
 
+  # Pays the ledger's withdrawals from the vault (cmd/withdrawal-payer): sends to the
+  # sequencer, finds the vault in the deployment record, mounted read-only without the
+  # keys, signs with a key of its own that holds only the vault's operator role
+  # (cmd/vault-payer), and connects as a login that holds only withdrawal_payer.
+  withdrawal-payer:
+    build:
+      context: ../..
+      dockerfile: infra/images/withdrawal-payer/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+      - l2
+    secrets:
+      - payer_db
+      - payer_key
+    command:
+      - -rpc=http://op-reth:8545
+      - -record=/vault/deployment.json
+      - -db=postgres://payer@postgres:5432/ledger?sslmode=disable
+      - -db-password-file=/run/secrets/payer_db
+      - -key-file=/run/secrets/payer_key
+      - -listen=:9111
+    volumes:
+      - ../../.devnet/vault/record:/vault:ro
+
 secrets:
   postgres_admin:
     file: ../../.devnet/bridge/postgres-admin.txt
   indexer_db:
     file: ../../.devnet/bridge/indexer.txt
+  payer_db:
+    file: ../../.devnet/bridge/payer.txt
+  payer_key:
+    file: ../../.devnet/bridge/payer-key.txt

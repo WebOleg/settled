@@ -69,3 +69,9 @@ scrape_configs:
     static_configs:
       - targets: [deposit-indexer:9110]
         labels: {chain: l2, role: bridge}
+
+  # The withdrawal payer of the bridge service (cmd/withdrawal-payer).
+  - job_name: withdrawal-payer
+    static_configs:
+      - targets: [withdrawal-payer:9111]
+        labels: {chain: l2, role: bridge}

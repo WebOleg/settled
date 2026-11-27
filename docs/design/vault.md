@@ -29,7 +29,7 @@ events once the block is finalized, and send withdrawals with ids from the ledge
 | Admin | A `TimelockController`; every change waits its delay and is visible before it applies | Unpause; configure tokens and the queue delay; skim; grant and revoke roles; upgrade the implementation. Handing the admin role over takes two steps and a delay of its own (`AccessControlDefaultAdminRules`). |
 | Timelock proposer | A key for admin changes | Schedule a change on the timelock and execute it after the delay. It cannot cancel. |
 | Timelock canceller | A key kept apart from the proposer | Cancel a scheduled change before it applies. It cannot propose or execute. |
-| Operator | The hot key of the withdrawal service | Pay withdrawals; pay queued withdrawals after their delay. Nothing else. |
+| Operator | Hot keys: the withdrawal payer's own ([withdrawals](withdrawals.md#the-service)), and on the devnet a second for `make vault-check` | Pay withdrawals; pay queued withdrawals after their delay. Nothing else. |
 | Guardian | A key kept apart from the service, for incidents | Pause; cancel queued withdrawals. It cannot unpause, move funds or change anything. |
 | Anyone | Users | Deposit. |
 
@@ -118,9 +118,12 @@ taken over directly.
    so no one can initialize it in between. Its admin is the timelock.
 4. The first rule, the ETH configuration, proposed to the timelock and executed after
    the delay: from the first change on, the rules change the way they always will.
+5. The withdrawal payer's own key is granted the operator role the same way, through
+   the timelock ([cmd/vault-payer](../../cmd/vault-payer/main.go), also
+   `make vault-payer`), and topped up with ETH for gas.
 
-The five keys (deployer, operator, guardian, timelock proposer, timelock canceller) are
-created once in
+The six keys (deployer, operator, guardian, timelock proposer, timelock canceller,
+payer) are created once in
 `.devnet/vault/keys`, readable by the owner only, and the deployer holds no role when it
 is done. Addresses and the L2 they belong to are recorded in
 `.devnet/vault/record/deployment.json`; a second run on the same L2 changes nothing, and a

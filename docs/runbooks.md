@@ -242,6 +242,59 @@ Do:
 - Recompute from the journal, which nobody can change: `ledger_check()` names each
   account and its totals. Correct with transfers, never by editing balances.
 
+## WithdrawalPayerStale
+
+The withdrawal payer has not completed a step for a minute. Withdrawals stay held in the
+ledger and nothing is paid, sent again or replaced; no money is lost, and none moves.
+
+Look at:
+- `make bridge-logs`: the payer logs each new error once, with what it was doing.
+- `make status`: whether the sequencer (`op-reth`) and the ledger's PostgreSQL run.
+- `withdrawal_payer_step_errors_total` rising: steps run and fail, against the node or
+  the database.
+
+Do:
+- The node or the database is down: start it; the payer goes on from what it recorded.
+- The payer is down: `make bridge-up` starts it. A second payer may run next to it, with
+  the same key: each withdrawal is worked on by one at a time and nonces come from one
+  row, so starting one is always safe.
+
+## WithdrawalsWaiting
+
+A withdrawal has waited 10 minutes or more with nothing on chain for it, while the
+payer runs. The customer's balance is held; the payer checks each call against the vault
+before signing and waits out what the vault refuses for now.
+
+Look at:
+- The withdrawal's `last_error` in the ledger: the reason the payer last could not pay
+  it, such as `RateLimited`, `EnforcedPause` or `InsufficientFunds` from the vault, or a
+  network fee above the payer's fee cap.
+- The vault tiles: paused, or out of what it owes.
+
+Do:
+- `RateLimited`: the limit refills over its period; a run of large payments waits for
+  it. If the flow is above the limit for good, the limit is raised through the timelock.
+- `EnforcedPause`: the guardian paused the vault; find out why before it is unpaused.
+- `InsufficientFunds`: the vault holds less than it owes; see VaultInsolvent.
+- The fee cap: the network asks more than `-max-fee-cap-gwei`. Waiting is the default;
+  raising the cap is a decision about cost, made by a person.
+
+## PayerFundsLow
+
+The withdrawal payer's key holds less than 0.01 ETH for gas on the L2. A transaction it
+signs then cannot be paid for and is not mined, and every later nonce waits behind it.
+
+Look at:
+- `withdrawal_payer_balance_wei` over the last hours: a steady fall is normal use, a
+  sudden one is not.
+- The key's transactions on chain: only calls to the vault are expected.
+
+Do:
+- Top it up: `make vault-payer` tops it up to 0.05 ETH from the devnet user. In
+  production a treasury key funds it, within a limit.
+- A fall that is not the payer's own transactions means the key is used elsewhere:
+  revoke its role through the timelock and pause the vault.
+
 ## SuspenseUnresolved
 
 A payment left the vault without the ledger, was posted to `suspense:ETH` once final,
