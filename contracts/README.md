@@ -7,7 +7,8 @@ keep are in [docs/design/vault.md](../docs/design/vault.md).
 
 | Command | What it does |
 |---|---|
-| `make check-contracts` | Checks formatting, builds without compiler warnings, checks that every source file built an artifact, and runs the tests; part of `make check` |
+| `make check-contracts` | Checks formatting, builds without compiler warnings, checks that every source file built an artifact, runs the tests, and compares the gas of the unit tests with `.gas-snapshot`; part of `make check` |
+| `make contracts-snapshot` | Records the gas of the unit tests in `.gas-snapshot`. A change in gas shows in review as a change to that file. |
 
 Forge runs in the pinned Foundry image, as the calling user, with its home folder on
 `.cache/foundry` (where solc is kept after the first download). Nothing is installed on
@@ -37,5 +38,9 @@ the host.
 |---|---|
 | [foundry.toml](foundry.toml) | Compiler, EVM target, library paths |
 | [src/interfaces/IVault.sol](src/interfaces/IVault.sol) | The vault's interface: types, events, errors, functions |
+| [src/Vault.sol](src/Vault.sol) | The vault, built on OpenZeppelin: default admin rules, pause, UUPS, transient reentrancy guard, SafeERC20 |
+| [test/unit/Vault.t.sol](test/unit/Vault.t.sol) | A test for each rule of the specification, the bad case included |
+| [test/mocks](test/mocks) | Tokens that misbehave (a fee on transfer, no return value, a callback into the vault), a recipient that refuses ETH, and a next version of the vault for the upgrade test |
+| `.gas-snapshot` | Gas of each unit test |
 | `lib/` | The libraries above, as submodules |
 | `out/`, `cache/` | Build output; not in git |

@@ -73,6 +73,7 @@ interface IVault {
     error InvalidConfig();
     error NativeTransferFailed(address to, uint256 amount);
     error DirectTransferRejected();
+    error RoleConflict(address account);
 
     /// @notice The address that stands for ETH in token arguments.
     function NATIVE() external view returns (address);

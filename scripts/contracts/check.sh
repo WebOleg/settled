@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Checks the contracts in the pinned Foundry image: formatting, a build without compiler
 # warnings, an artifact for every source file (forge in a broken image once exited 0 and
-# built nothing), and the tests when there are any. Run as the calling user, with HOME on
+# built nothing), the tests, and the gas of the unit tests against .gas-snapshot. Run as the calling user, with HOME on
 # .cache/foundry, so files in the repository stay owned by that user and solc is
 # downloaded once.
 set -euo pipefail
@@ -35,6 +35,10 @@ done < <(cd contracts && find src -name '*.sol' | sort)
 sources="$(cd contracts && find src -name '*.sol' | wc -l | tr -d ' ')"
 
 if [ -n "$(cd contracts && find test -name '*.t.sol' 2>/dev/null | head -1)" ]; then
-  forge test || fail "tests failed"
+  out="$(forge test 2>&1)" || { printf '%s\n' "$out" | tail -60; fail "tests failed"; }
+  printf '%s\n' "$out" | grep -E '^Ran [0-9]+ test suite' | tail -1
 fi
-echo "check-contracts: ok ($sources source files built)"
+if [ -f contracts/.gas-snapshot ]; then
+  out="$(forge snapshot --check --match-path 'test/unit/*' 2>&1)" || { printf '%s\n' "$out" | grep -iE 'diff|changed|mismatch|fail' | head -20; fail "gas differs from .gas-snapshot; run make contracts-snapshot and review the change"; }
+fi
+echo "check-contracts: ok, $sources source files built, tests passed"

@@ -2,8 +2,10 @@
 
 The contract that holds an exchange's funds on the L2: it takes deposits for exchange
 accounts and pays withdrawals. This file is its specification. The interface is
-[IVault.sol](../../contracts/src/interfaces/IVault.sol); the implementation and its
-tests follow this file, and every invariant below has a test named after it.
+[IVault.sol](../../contracts/src/interfaces/IVault.sol), the implementation
+[Vault.sol](../../contracts/src/Vault.sol), and the unit tests
+[Vault.t.sol](../../contracts/test/unit/Vault.t.sol); every invariant below has a test
+named after it.
 
 ## Why a contract
 
@@ -72,6 +74,11 @@ do not draw on the bucket: they are limited by the delay and the guardian instea
 The guardian pauses; only the admin, through the timelock, unpauses. While paused, no
 deposit, payment or queued payment goes through. Cancelling and every admin action still
 work, so an incident can be cleaned up while the vault is stopped.
+
+## Keys kept apart
+
+A key holds at most one of operator and guardian, and the admin holds neither. Granting
+a second one reverts with `RoleConflict`, at initialization as later.
 
 ## Funds the vault does not owe
 
