@@ -153,6 +153,33 @@ An upgrade keeps the meaning of the state. The move of the clock from timestamps
 block numbers did not: every stored release time and refill point would have been read
 as a block number. It was a new deployment, not an upgrade.
 
+### The rules on the devnet
+
+`make vault-check` ([cmd/vault-check](../../cmd/vault-check/main.go)) runs the rules
+with real transactions, each sent by the key that holds the role, and checks every
+step against the chain:
+
+1. The devnet user deposits 6 ETH for an exchange account: `Deposited` carries the
+   next deposit id, and the vault's balance and `accounted` rise by exactly the amount.
+2. The operator pays 1 ETH at once: the recipient holds exactly 1 ETH, and a full rate
+   limit holds exactly 1 ETH less. The same id is then refused with
+   `WithdrawalExists(id, Paid)`.
+3. The operator asks for 5 ETH, the queue threshold: the withdrawal is queued with a
+   release block 60 blocks on, nothing is paid, and paying it early is refused with
+   `WithdrawalNotReleased`.
+4. The guardian pauses: a deposit and the queued payment are refused with
+   `EnforcedPause`, and the guardian's own `unpause` is refused for want of the admin
+   role. The admin unpauses through the timelock.
+5. After the release block the operator pays the queued withdrawal.
+6. The recipient holds exactly 6 ETH, and the vault's balance and `accounted` are back
+   where they started, to the wei.
+
+A failed check is reported as an error, never retried. Every run takes new ids, a new
+account and a new recipient from the block it starts at. The run takes about three
+minutes, set by the queue delay; `-preflight` checks only that a run can start. A run
+stopped while the vault is paused leaves it paused, and the next run unpauses it
+through the timelock before it starts.
+
 ## Invariants
 
 The tests check each of these by name: unit tests for each rule
