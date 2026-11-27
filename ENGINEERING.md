@@ -75,7 +75,7 @@ targets.
 | `check-bridge` | [scripts/check-bridge.sh](scripts/check-bridge.sh): [cmd/bridge-e2e](cmd/bridge-e2e/main.go), [cmd/suspense](cmd/suspense/main.go) and [cmd/payer-e2e](cmd/payer-e2e/main.go) against anvil from the Foundry image and a throwaway PostgreSQL | a deposit credited before its block is final, a deposit a reorganisation removed still held or credited, a transaction that came back in another block credited twice, a payment without the ledger not in suspense or resolved without a second operator, a withdrawal paid twice or not at all after a failed send, a reorganisation, two payers at once or a fee rise, a nonce used twice or skipped, a transaction left open, a transaction signed that the ledger does not hold or that passes the signer's velocity limit, a transaction of the payer's without the signer's record, a rotated key the payer does not follow or that leaves the old one its role, books that disagree with the journal or with the vault on chain |
 
 The checks run with gitleaks 8.30.1, shellcheck 0.11.0, Go 1.26.2, PostgreSQL 18.7, Foundry v1.10.1, Halmos 0.3.3 and Slither 0.11.6,
-kustomize v5.8.3 and kubeconform v0.8.0 (pinned in [tools/go.mod](tools/go.mod)), locally and in CI. CI installs shellcheck and gitleaks with
+kustomize v5.8.2 and kubeconform v0.8.0 (pinned in [tools/go.mod](tools/go.mod)), locally and in CI. CI installs shellcheck and gitleaks with
 [scripts/ci/install-tools.sh](scripts/ci/install-tools.sh), which checks each release
 archive against its sha256 first, and pins every GitHub action by commit SHA. A tool is
 upgraded in both places in one commit.

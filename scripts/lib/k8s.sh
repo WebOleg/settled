@@ -14,9 +14,11 @@ K8S_VERSION="1.37.0"
 K8S_SCHEMAS="https://raw.githubusercontent.com/yannh/kubernetes-json-schema/e62c03bd5a52fd34ff6ac28d083e2a300e0ae7c1/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json"
 export K8S_ROOT K8S_CLUSTER K8S_CONTEXT K8S_BIN K8S_VERSION K8S_SCHEMAS
 
+# GOTOOLCHAIN=local: the Go the repository pins builds them, or the build fails; Go does
+# not fetch a newer toolchain for a tool that asks for one.
 k8s_tools() {
   mkdir -p "$K8S_BIN"
-  go build -C "$K8S_ROOT/tools" -o "$K8S_BIN/" \
+  GOTOOLCHAIN=local go build -C "$K8S_ROOT/tools" -o "$K8S_BIN/" \
     sigs.k8s.io/kind github.com/yannh/kubeconform/cmd/kubeconform sigs.k8s.io/kustomize/kustomize/v5
 }
 
