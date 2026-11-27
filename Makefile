@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts contracts-snapshot contracts-slither-record l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-upgrade vault-timelock-move vault-check vault-reset l2-logs l2-down l2-reset
+.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts check-bridge contracts-snapshot contracts-slither-record l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-upgrade vault-timelock-move vault-check vault-reset l2-logs l2-down l2-reset
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
@@ -50,7 +50,7 @@ reset: ## Stop everything and delete chain data, metrics and the deployment; rol
 	@scripts/devnet/l2-deploy.sh --reset
 	@scripts/devnet/l1-init.sh --reset
 
-check: check-docs check-images check-shell check-secrets check-go check-contracts ## Run every local check
+check: check-docs check-images check-shell check-secrets check-go check-contracts check-bridge ## Run every local check
 
 check-docs: ## Formatting and documentation rules on every tracked file
 	@scripts/check-docs.sh
@@ -81,6 +81,9 @@ contracts-slither-record: ## Record Slither's findings in contracts/slither.db.j
 
 check-go: ## gofmt, go vet and go test on every Go package; the ledger's tests against a throwaway PostgreSQL
 	@POSTGRES_IMAGE=$(POSTGRES_IMAGE) scripts/check-go.sh
+
+check-bridge: ## The deposit indexer end to end on anvil: held, credited at finality, voided by a reorg, credited once
+	@POSTGRES_IMAGE=$(POSTGRES_IMAGE) FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/check-bridge.sh
 
 l1-up: ## Start the local L1; creates its genesis on first run
 	@scripts/devnet/l1-init.sh

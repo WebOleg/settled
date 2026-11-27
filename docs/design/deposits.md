@@ -66,6 +66,36 @@ The indexer runs as `deposit_indexer`, which holds `ledger_writer` and may inser
 blocks and deposits, delete blocks that are not final, and change a deposit's status
 and a block's final flag, nothing else.
 
+## End to end
+
+`make check-bridge` ([cmd/bridge-e2e](../../cmd/bridge-e2e/main.go)), part of
+`make check`, runs the indexer against a real node that can be made to reorganise:
+anvil from the pinned Foundry image, whose finalized block trails its head by 64
+blocks, and a throwaway PostgreSQL, migrated by `ledger-migrate` with the indexer's
+login, as on the devnet. It deploys the vault behind its proxy and sends real
+deposits:
+
+1. two deposits are held while their blocks are not final, and credited once the
+   finalized block reaches them;
+2. `anvil_reorg` drops the block of a third, held deposit: it is voided and nothing of
+   it is credited;
+3. a fourth deposit's signed transaction is put back by `anvil_reorg` into a new block:
+   voided in the old block, held in the new one, credited once;
+4. the books agree with the journal, and what the ledger holds for the vault equals
+   `accounted(ETH)` of the vault on chain at the finalized block, to the wei.
+
+## The command
+
+[cmd/deposit-indexer](../../cmd/deposit-indexer/main.go) steps every 2 s, finds the
+vault in the deployment record, read again at every step, and serves its metrics on
+`/metrics`: the node's head and finalized block, its own tip and lag, deposits seen,
+posted and voided, reorganisations, failed steps, deposits still held, and the result
+of `ledger_check()`, run every 30 s. After `ErrFinalityViolation` it writes nothing
+more and reports `deposit_indexer_finality_violation 1`. The database password comes
+from a file, never a flag. [cmd/ledger-migrate](../../cmd/ledger-migrate/main.go)
+migrates the schema as its owner and makes each service's login, holding only the role
+it needs.
+
 ## Known limits
 
 | Limit | Why it is accepted here |

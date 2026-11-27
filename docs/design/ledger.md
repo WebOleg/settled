@@ -75,8 +75,10 @@ The schema is created by numbered migrations embedded in the binary
 transaction, under an advisory lock so two processes never apply one at once. Each
 applied migration is recorded with its sha256; a migration changed after it was applied
 stops the next run, since the database would no longer be the schema the code
-describes. Migrations run as the owner of the schema; the service connects as a role
-that holds only `ledger_writer`.
+describes. Migrations run as the owner of the schema
+([cmd/ledger-migrate](../../cmd/ledger-migrate/main.go)), which also makes each
+service's login role; a service connects as a login that holds only its role, such as
+`ledger_writer`.
 
 ## Tests
 
