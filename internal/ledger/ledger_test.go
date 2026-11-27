@@ -2,27 +2,17 @@ package ledger
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
-	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/WebOleg/settled/internal/ledger/ledgertest"
 )
-
-// adminEnv names the connection string of a PostgreSQL superuser for the tests. make
-// check-go starts a throwaway PostgreSQL and sets it; each test gets a database of its
-// own. Without it the tests fail rather than skip: a ledger left untested reads as a
-// ledger that passed.
-const adminEnv = "SETTLED_TEST_POSTGRES"
-
-const appRole = "ledger_test_app"
 
 type fixture struct {
 	admin *pgx.Conn // the schema owner, in the test's database
@@ -31,79 +21,19 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	adminURL := os.Getenv(adminEnv)
-	if adminURL == "" {
-		t.Fatalf("%s is not set; run make check-go", adminEnv)
-	}
 	ctx := context.Background()
-	server, err := pgx.Connect(ctx, adminURL)
+	db := ledgertest.New(t, Migrate, "ledger_writer")
+	admin, err := pgx.Connect(ctx, db.OwnerURL)
 	if err != nil {
-		t.Fatalf("connect as admin: %v", err)
-	}
-	defer server.Close(ctx)
-	db := "ledger_test_" + randomHex(t, 6)
-	if _, err := server.Exec(ctx, "CREATE DATABASE "+db); err != nil {
-		t.Fatalf("create database: %v", err)
-	}
-	password := randomHex(t, 16)
-	// Roles belong to the server, not to one database: created once, password reset.
-	if _, err := server.Exec(ctx, fmt.Sprintf(`DO $$ BEGIN
-		IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '%s') THEN CREATE ROLE %s LOGIN; END IF;
-		END $$`, appRole, appRole)); err != nil {
-		t.Fatalf("create the app role: %v", err)
-	}
-	if _, err := server.Exec(ctx, fmt.Sprintf("ALTER ROLE %s PASSWORD '%s'", appRole, password)); err != nil {
-		t.Fatalf("set the app role's password: %v", err)
-	}
-	t.Cleanup(func() {
-		c, err := pgx.Connect(context.Background(), adminURL)
-		if err != nil {
-			return
-		}
-		defer c.Close(context.Background())
-		_, _ = c.Exec(context.Background(), "DROP DATABASE IF EXISTS "+db+" WITH (FORCE)")
-	})
-
-	dbURL := withDatabase(t, adminURL, db, "", "")
-	if n, err := Migrate(ctx, dbURL); err != nil || n != 1 {
-		t.Fatalf("migrate: %d applied, %v", n, err)
-	}
-	admin, err := pgx.Connect(ctx, dbURL)
-	if err != nil {
-		t.Fatalf("connect to the test database: %v", err)
+		t.Fatalf("connect as the owner: %v", err)
 	}
 	t.Cleanup(func() { admin.Close(context.Background()) })
-	if _, err := admin.Exec(ctx, "GRANT ledger_writer TO "+appRole); err != nil {
-		t.Fatalf("grant ledger_writer: %v", err)
-	}
-	l, err := Open(ctx, withDatabase(t, adminURL, db, appRole, password))
+	l, err := Open(ctx, db.AppURL)
 	if err != nil {
 		t.Fatalf("open as the app role: %v", err)
 	}
 	t.Cleanup(l.Close)
 	return &fixture{admin: admin, l: l}
-}
-
-func withDatabase(t *testing.T, raw, db, user, password string) string {
-	t.Helper()
-	u, err := url.Parse(raw)
-	if err != nil {
-		t.Fatalf("parse %s: %v", adminEnv, err)
-	}
-	u.Path = "/" + db
-	if user != "" {
-		u.User = url.UserPassword(user, password)
-	}
-	return u.String()
-}
-
-func randomHex(t *testing.T, n int) string {
-	t.Helper()
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		t.Fatal(err)
-	}
-	return hex.EncodeToString(b)
 }
 
 func eth(n int64) *big.Int { return new(big.Int).Mul(big.NewInt(n), big.NewInt(1e18)) }
@@ -453,5 +383,25 @@ func TestTransfer_postAndVoidRaceOneWins(t *testing.T) {
 			t.Fatalf("round %d: %d resolutions won, want 1", round, won)
 		}
 	}
+	f.clean(t)
+}
+
+// What a transaction records commits together or not at all.
+func TestInTx_rollsBackEveryTransferOnError(t *testing.T) {
+	f := newFixture(t)
+	vault, alice, _ := f.books(t)
+	ctx := context.Background()
+	stop := errors.New("stop")
+	err := f.l.InTx(ctx, func(_ pgx.Tx, in *Ledger) error {
+		if _, err := in.Transfer(ctx, Transfer{Key: "deposit-1", Kind: Single, Debit: vault.ID, Credit: alice.ID, Amount: eth(1), Code: "deposit"}); err != nil {
+			return err
+		}
+		return stop
+	})
+	if !errors.Is(err, stop) {
+		t.Fatalf("InTx: %v, want the error fn returned", err)
+	}
+	f.balances(t, alice.Name, 0, 0, 0, 0)
+	f.must(t, Transfer{Key: "deposit-1", Kind: Single, Debit: vault.ID, Credit: alice.ID, Amount: eth(2), Code: "deposit"})
 	f.clean(t)
 }

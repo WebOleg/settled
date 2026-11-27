@@ -94,9 +94,17 @@ type Transfer struct {
 	CreatedAt time.Time
 }
 
-// Ledger is a connection pool to the ledger database, as ledger_writer.
+// Ledger is a connection pool to the ledger database, as ledger_writer, or one
+// transaction on it (InTx).
 type Ledger struct {
 	pool *pgxpool.Pool
+	q    querier
+}
+
+// querier is what a pool and a transaction have in common.
+type querier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 // Open connects to the ledger database. url is a PostgreSQL connection string for a
@@ -110,8 +118,20 @@ func Open(ctx context.Context, url string) (*Ledger, error) {
 		pool.Close()
 		return nil, fmt.Errorf("ledger: connect: %w", err)
 	}
-	return &Ledger{pool: pool}, nil
+	return &Ledger{pool: pool, q: pool}, nil
 }
+
+// InTx runs fn in one transaction: the transfers fn records and whatever else it writes
+// with tx commit together or not at all. The Ledger fn receives works in tx.
+func (l *Ledger) InTx(ctx context.Context, fn func(tx pgx.Tx, in *Ledger) error) error {
+	return pgx.BeginFunc(ctx, l.pool, func(tx pgx.Tx) error {
+		return fn(tx, &Ledger{pool: l.pool, q: tx})
+	})
+}
+
+// Pool is the connection pool, for packages that keep their own tables next to the
+// ledger's.
+func (l *Ledger) Pool() *pgxpool.Pool { return l.pool }
 
 // Close closes the pool.
 func (l *Ledger) Close() { l.pool.Close() }
@@ -122,7 +142,7 @@ const accountColumns = "id, name, asset, debits_must_not_exceed_credits, credits
 // CreateAccount creates the account, or returns it if one of that name exists with the
 // same asset and limit.
 func (l *Ledger) CreateAccount(ctx context.Context, name, asset string, limit Limit) (Account, error) {
-	row := l.pool.QueryRow(ctx, "SELECT "+accountColumns+" FROM ledger_account($1, $2, $3, $4)",
+	row := l.q.QueryRow(ctx, "SELECT "+accountColumns+" FROM ledger_account($1, $2, $3, $4)",
 		name, asset, limit == DebitsWithinCredits, limit == CreditsWithinDebits)
 	a, err := scanAccount(row)
 	if err != nil {
@@ -133,7 +153,7 @@ func (l *Ledger) CreateAccount(ctx context.Context, name, asset string, limit Li
 
 // Account reads an account by name.
 func (l *Ledger) Account(ctx context.Context, name string) (Account, error) {
-	a, err := scanAccount(l.pool.QueryRow(ctx, "SELECT "+accountColumns+" FROM accounts WHERE name = $1", name))
+	a, err := scanAccount(l.q.QueryRow(ctx, "SELECT "+accountColumns+" FROM accounts WHERE name = $1", name))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Account{}, fmt.Errorf("ledger: account %s: %w", name, ErrNotFound)
 	}
@@ -163,7 +183,7 @@ func (l *Ledger) Transfer(ctx context.Context, t Transfer) (Transfer, error) {
 	if t.PendingKey != "" {
 		pending = &t.PendingKey
 	}
-	row := l.pool.QueryRow(ctx, `SELECT id, key, kind, debit_account, credit_account, amount::text,
+	row := l.q.QueryRow(ctx, `SELECT id, key, kind, debit_account, credit_account, amount::text,
 		coalesce((SELECT key FROM transfers p WHERE p.id = t.pending_id), ''), code, created_at
 		FROM ledger_transfer($1, $2, $3, $4, $5::numeric, $6, $7) t`,
 		t.Key, string(t.Kind), debit, credit, amount, pending, t.Code)
@@ -183,7 +203,7 @@ func (l *Ledger) Transfer(ctx context.Context, t Transfer) (Transfer, error) {
 // Check recomputes every balance from the journal and returns what disagrees, if
 // anything; nil means the books are right.
 func (l *Ledger) Check(ctx context.Context) ([]string, error) {
-	rows, err := l.pool.Query(ctx, "SELECT problem FROM ledger_check()")
+	rows, err := l.q.Query(ctx, "SELECT problem FROM ledger_check()")
 	if err != nil {
 		return nil, fmt.Errorf("ledger: check: %w", err)
 	}
