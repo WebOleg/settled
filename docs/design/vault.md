@@ -90,16 +90,20 @@ deposits account for, never more.
 
 The vault sits behind an ERC-1967 proxy and upgrades itself (UUPS); only the admin, so
 only through the timelock, can upgrade. State lives in one namespaced storage struct
-(ERC-7201), so a new implementation cannot collide with the slots of the old one, and
-the layout is kept in the repository and compared on every check: a change to it fails
-until it is reviewed. The implementation disables its own initializer, so it cannot be
+(ERC-7201), so a new implementation cannot collide with the slots of the old one. A
+test reads the proxy's storage slot by slot and checks where each field lives
+([VaultLayout.t.sol](../../contracts/test/unit/VaultLayout.t.sol)), so reordering,
+retyping or inserting a field fails the check until it is reviewed as a migration. The implementation disables its own initializer, so it cannot be
 taken over directly.
 
 ## Invariants
 
-The tests prove each of these by name: unit tests for each rule, fuzz tests over
-inputs, invariant tests over random sequences of every call by every role, and symbolic
-tests where a property must hold for all inputs.
+The tests check each of these by name: unit tests for each rule
+([test/unit](../../contracts/test/unit)), fuzz tests over inputs
+([test/fuzz](../../contracts/test/fuzz)), and invariant tests over random sequences of
+every call by every key, with a handler that keeps its own books next to the vault's
+([test/invariant](../../contracts/test/invariant)). A local check runs 1,000 fuzz runs
+and 128 invariant runs of 64 calls; CI runs 10,000 and 512 of 128.
 
 | Id | Invariant |
 |---|---|
@@ -112,7 +116,7 @@ tests where a property must hold for all inputs.
 | I7 Roles | Each function succeeds only for the roles in the table above. |
 | I8 Deposit ids | Deposit ids are consecutive from 0, and each deposit is credited exactly the amount the vault received. |
 | I9 Skim | Skim never lowers the balance below what the vault accounts for. |
-| I10 Storage | The storage layout of the implementation is the one in the repository. |
+| I10 Storage | Every field of the state is at the slot the test pins, inside the ERC-7201 namespace, and nothing is outside a namespace. |
 
 ## Security
 

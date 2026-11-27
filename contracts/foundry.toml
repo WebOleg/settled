@@ -25,3 +25,20 @@ remappings = [
   "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
   "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
 ]
+
+# Fuzz and invariant depth for a local run; CI runs the ci profile, deeper.
+[profile.default.fuzz]
+runs = 1000
+
+[profile.default.invariant]
+runs = 128
+depth = 64
+fail_on_revert = false
+
+[profile.ci.fuzz]
+runs = 10000
+
+[profile.ci.invariant]
+runs = 512
+depth = 128
+fail_on_revert = false

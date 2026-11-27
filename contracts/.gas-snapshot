@@ -1,3 +1,6 @@
+VaultLayoutTest:test_I10_layout() (gas: 255673)
+VaultLayoutTest:test_I10_namespaceIsErc7201() (gas: 500)
+VaultLayoutTest:test_I10_nothingOutsideNamespaces() (gas: 14515)
 VaultTest:test_adminFunctions_onlyAdmin() (gas: 4494335)
 VaultTest:test_adminTransfer_twoStepsWithDelay() (gas: 173365)
 VaultTest:test_cancelQueued_byGuardianIsFinal() (gas: 331376)

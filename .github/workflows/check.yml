@@ -42,3 +42,6 @@ jobs:
 
       - name: make check
         run: make check
+        env:
+          # Deeper fuzz and invariant runs than a local check (contracts/foundry.toml).
+          FOUNDRY_PROFILE: ci

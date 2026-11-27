@@ -10,7 +10,8 @@ keep are in [docs/design/vault.md](../docs/design/vault.md).
 | `make check-contracts` | Checks formatting, builds without compiler warnings, checks that every source file built an artifact, runs the tests, and compares the gas of the unit tests with `.gas-snapshot`; part of `make check` |
 | `make contracts-snapshot` | Records the gas of the unit tests in `.gas-snapshot`. A change in gas shows in review as a change to that file. |
 
-Forge runs in the pinned Foundry image, as the calling user, with its home folder on
+`FOUNDRY_PROFILE=ci` runs the fuzz and invariant tests deeper, as CI does
+([foundry.toml](foundry.toml)). Forge runs in the pinned Foundry image, as the calling user, with its home folder on
 `.cache/foundry` (where solc is kept after the first download). Nothing is installed on
 the host.
 
@@ -40,6 +41,10 @@ the host.
 | [src/interfaces/IVault.sol](src/interfaces/IVault.sol) | The vault's interface: types, events, errors, functions |
 | [src/Vault.sol](src/Vault.sol) | The vault, built on OpenZeppelin: default admin rules, pause, UUPS, transient reentrancy guard, SafeERC20 |
 | [test/unit/Vault.t.sol](test/unit/Vault.t.sol) | A test for each rule of the specification, the bad case included |
+| [test/unit/VaultLayout.t.sol](test/unit/VaultLayout.t.sol) | I10: where each field of the state lives, read slot by slot from the proxy |
+| [test/fuzz/VaultFuzz.t.sol](test/fuzz/VaultFuzz.t.sol) | The rules over random amounts, ids and times; the rate limit checked over every span |
+| [test/invariant](test/invariant) | I1 to I9 over random sequences of every call by every key; the handler keeps its own books |
+| [test/utils/VaultSetup.sol](test/utils/VaultSetup.sol) | The vault behind its proxy, configured, as the fuzz, invariant and layout tests start |
 | [test/mocks](test/mocks) | Tokens that misbehave (a fee on transfer, no return value, a callback into the vault), a recipient that refuses ETH, and a next version of the vault for the upgrade test |
 | `.gas-snapshot` | Gas of each unit test |
 | `lib/` | The libraries above, as submodules |

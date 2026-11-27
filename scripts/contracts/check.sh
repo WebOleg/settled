@@ -12,7 +12,8 @@ cd "$root"
 mkdir -p .cache/foundry
 
 forge() {
-  docker run --rm -u "$(id -u):$(id -g)" -e HOME=/cache -v "$root/.cache/foundry:/cache" \
+  docker run --rm -u "$(id -u):$(id -g)" -e HOME=/cache -e FOUNDRY_PROFILE="${FOUNDRY_PROFILE:-default}" \
+    -v "$root/.cache/foundry:/cache" \
     -v "$root/contracts:/work" -w /work --entrypoint forge "$FOUNDRY_IMAGE" "$@"
 }
 fail() { echo "check-contracts: FAIL: $*"; exit 1; }
@@ -37,6 +38,7 @@ sources="$(cd contracts && find src -name '*.sol' | wc -l | tr -d ' ')"
 if [ -n "$(cd contracts && find test -name '*.t.sol' 2>/dev/null | head -1)" ]; then
   out="$(forge test 2>&1)" || { printf '%s\n' "$out" | tail -60; fail "tests failed"; }
   printf '%s\n' "$out" | grep -E '^Ran [0-9]+ test suite' | tail -1
+  echo "profile          ${FOUNDRY_PROFILE:-default}"
 fi
 if [ -f contracts/.gas-snapshot ]; then
   out="$(forge snapshot --check --match-path 'test/unit/*' 2>&1)" || { printf '%s\n' "$out" | grep -iE 'diff|changed|mismatch|fail' | head -20; fail "gas differs from .gas-snapshot; run make contracts-snapshot and review the change"; }
