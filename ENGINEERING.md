@@ -67,6 +67,7 @@ targets.
 |---|---|---|
 | `check-docs` | [scripts/check-docs.sh](scripts/check-docs.sh) | CRLF line endings, a missing final newline, trailing spaces outside Markdown, an em dash in Markdown, a relative link to a file that does not exist |
 | `check-images` | [scripts/check-images.sh](scripts/check-images.sh) | a container image in a compose file, a script, the Makefile or a Dockerfile `FROM` that is not pinned by digest; an image built from the repository whose Dockerfile or `.dockerignore` leaves out a package its command is built from |
+| `check-k8s` | [scripts/check-k8s.sh](scripts/check-k8s.sh): kustomize, kubeconform, [cmd/k8s-lint](cmd/k8s-lint/main.go) | a kustomization under `infra/k8s` that does not build, an object not valid for the cluster's Kubernetes version (strict, schemas pinned to a commit), a namespace without restricted Pod Security or a default-deny network policy, a workload with an image not pinned by digest, root, privilege escalation, a capability kept, a writable root or a service account token without a stated reason, or no CPU and memory request and memory limit |
 | `check-shell` | shellcheck | any finding in a tracked shell script |
 | `check-secrets` | gitleaks | a secret anywhere in the git history; findings are printed redacted |
 | `check-go` | [scripts/check-go.sh](scripts/check-go.sh): gofmt, go vet, go test | an unformatted file, a vet finding or a failing test; the ledger's tests run against a throwaway PostgreSQL in the pinned image ([scripts/lib/postgres.sh](scripts/lib/postgres.sh)) |
@@ -74,7 +75,7 @@ targets.
 | `check-bridge` | [scripts/check-bridge.sh](scripts/check-bridge.sh): [cmd/bridge-e2e](cmd/bridge-e2e/main.go), [cmd/suspense](cmd/suspense/main.go) and [cmd/payer-e2e](cmd/payer-e2e/main.go) against anvil from the Foundry image and a throwaway PostgreSQL | a deposit credited before its block is final, a deposit a reorganisation removed still held or credited, a transaction that came back in another block credited twice, a payment without the ledger not in suspense or resolved without a second operator, a withdrawal paid twice or not at all after a failed send, a reorganisation, two payers at once or a fee rise, a nonce used twice or skipped, a transaction left open, a transaction signed that the ledger does not hold or that passes the signer's velocity limit, a transaction of the payer's without the signer's record, a rotated key the payer does not follow or that leaves the old one its role, books that disagree with the journal or with the vault on chain |
 
 The checks run with gitleaks 8.30.1, shellcheck 0.11.0, Go 1.26.2, PostgreSQL 18.7, Foundry v1.10.1, Halmos 0.3.3 and Slither 0.11.6,
-locally and in CI. CI installs shellcheck and gitleaks with
+kustomize v5.8.3 and kubeconform v0.8.0 (pinned in [tools/go.mod](tools/go.mod)), locally and in CI. CI installs shellcheck and gitleaks with
 [scripts/ci/install-tools.sh](scripts/ci/install-tools.sh), which checks each release
 archive against its sha256 first, and pins every GitHub action by commit SHA. A tool is
 upgraded in both places in one commit.

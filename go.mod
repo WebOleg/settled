@@ -10,6 +10,7 @@ require (
 	github.com/ethereum/go-ethereum v1.17.10
 	github.com/holiman/uint256 v1.3.2
 	github.com/jackc/pgx/v5 v5.13.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

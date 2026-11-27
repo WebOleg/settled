@@ -1,0 +1,32 @@
+# The devnet's local Kubernetes cluster, made by kind (scripts/k8s/k8s-up.sh). One node,
+# its image pinned by digest, the image kind v0.33.0 was released with. The API server
+# listens on 127.0.0.1 only. Pod Security admission enforces the restricted standard on
+# every namespace by default (policies/admission.yaml), as the Kubernetes tutorial on
+# cluster-level Pod Security sets it up on kind; only kube-system and kind's storage
+# provisioner are exempt. @REPO@ is the repository's root, filled in by k8s-up.sh,
+# since kind mounts host folders by absolute path.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: settled
+networking:
+  apiServerAddress: 127.0.0.1
+  apiServerPort: 16443
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            admission-control-config-file: /etc/kubernetes/settled/admission.yaml
+          extraVolumes:
+            - name: settled-admission
+              hostPath: /etc/kubernetes/settled
+              mountPath: /etc/kubernetes/settled
+              readOnly: true
+              pathType: Directory
+    extraMounts:
+      - hostPath: "@REPO@/infra/k8s/policies"
+        containerPath: /etc/kubernetes/settled
+        readOnly: true

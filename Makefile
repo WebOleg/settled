@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts check-bridge contracts-snapshot contracts-slither-record l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-upgrade vault-timelock-move vault-payer vault-payer-rotate vault-check vault-reset bridge-up bridge-check suspense-list withdrawal-check deposit-check bridge-drill bridge-logs bridge-down bridge-reset l2-logs l2-down l2-reset
+.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-k8s check-shell check-secrets check-go check-contracts check-bridge contracts-snapshot contracts-slither-record l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-upgrade vault-timelock-move vault-payer vault-payer-rotate vault-check vault-reset bridge-up bridge-check suspense-list withdrawal-check deposit-check bridge-drill bridge-logs bridge-down bridge-reset l2-logs l2-down l2-reset k8s-up k8s-check k8s-down
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
@@ -53,13 +53,16 @@ reset: ## Stop everything and delete chain data, metrics, the ledger and the dep
 	@scripts/devnet/l2-deploy.sh --reset
 	@scripts/devnet/l1-init.sh --reset
 
-check: check-docs check-images check-shell check-secrets check-go check-contracts check-bridge ## Run every local check
+check: check-docs check-images check-k8s check-shell check-secrets check-go check-contracts check-bridge ## Run every local check
 
 check-docs: ## Formatting and documentation rules on every tracked file
 	@scripts/check-docs.sh
 
 check-images: ## Every container image pinned by digest; every image built here gets all its packages
 	@scripts/check-images.sh
+
+check-k8s: ## Kubernetes manifests: each kustomization builds, valid for the cluster's version, and holds to the repository's rules
+	@scripts/check-k8s.sh
 
 check-shell: ## shellcheck on every tracked shell script
 	@files="$$(git ls-files '*.sh')"; \
@@ -216,6 +219,15 @@ bridge-logs: ## Follow the logs of the deposit indexer, the withdrawal signer an
 
 bridge-down: ## Stop the deposit indexer, the withdrawal signer and payer, and the ledger's PostgreSQL; keep the ledger
 	@$(BRIDGE) down
+
+k8s-up: ## Start the devnet's local Kubernetes cluster (kind) with restricted Pod Security and default-deny networking everywhere
+	@scripts/k8s/k8s-up.sh
+
+k8s-check: ## Show the cluster refuses privileged and root pods and traffic no policy allows, and allows what one does
+	@scripts/k8s/k8s-check.sh
+
+k8s-down: ## Delete the devnet's local Kubernetes cluster and everything in it
+	@scripts/k8s/k8s-down.sh
 
 bridge-reset: ## Stop the bridge and delete the ledger and kms-dev's keys; passwords, access keys and the payer's key are made again at the next bridge-up
 	@$(BRIDGE) down --volumes

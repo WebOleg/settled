@@ -1,0 +1,9 @@
+# What every namespace of the devnet starts with: the namespace, labelled to enforce the
+# restricted Pod Security Standard (the cluster's default too, policies/admission.yaml),
+# and network policies that deny all traffic in and out but DNS. Each workload adds the
+# connections it needs, and only those.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespaces.yaml
+  - network-policies.yaml

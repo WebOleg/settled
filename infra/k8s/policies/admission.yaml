@@ -1,0 +1,23 @@
+# Pod Security admission for the whole cluster: every namespace enforces the restricted
+# Pod Security Standard unless it says otherwise, and none of ours does. Restricted means
+# no root, no privilege escalation, every capability dropped, the runtime's seccomp
+# profile, no host namespaces, ports or paths. kube-system and local-path-storage, which
+# runs kind's storage provisioner and needs host paths, are exempt.
+apiVersion: apiserver.config.k8s.io/v1
+kind: AdmissionConfiguration
+plugins:
+  - name: PodSecurity
+    configuration:
+      apiVersion: pod-security.admission.config.k8s.io/v1
+      kind: PodSecurityConfiguration
+      defaults:
+        enforce: restricted
+        enforce-version: latest
+        audit: restricted
+        audit-version: latest
+        warn: restricted
+        warn-version: latest
+      exemptions:
+        usernames: []
+        runtimeClasses: []
+        namespaces: [kube-system, local-path-storage]

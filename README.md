@@ -213,6 +213,18 @@ included, how fast, and how long until they were safe. Why it works this way is 
 [docs/design/observability.md](docs/design/observability.md); the stack is in
 [infra/observability/README.md](infra/observability/README.md).
 
+## Kubernetes
+
+```sh
+make k8s-up
+make k8s-check
+```
+
+starts a local Kubernetes cluster with kind, every namespace closed by default: the
+restricted Pod Security Standard enforced, all traffic denied but DNS. The check tries
+to break both and shows the cluster refuse. The devnet moves onto it part by part; what
+is in place is in [docs/design/kubernetes.md](docs/design/kubernetes.md).
+
 ## Checks
 
 ```sh

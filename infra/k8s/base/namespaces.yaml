@@ -1,0 +1,59 @@
+# The devnet's namespaces, one per part, as the compose projects are. Each enforces the
+# restricted Pod Security Standard, pinned to the cluster's version, and audits and
+# warns on it.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: settled-l1
+  annotations:
+    settled/holds: "the local L1: geth, the beacon node and the validator"
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.37
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.37
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.37
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: settled-l2
+  annotations:
+    settled/holds: "the OP Stack L2: the sequencer and the verifier, the batcher and the proposer"
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.37
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.37
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.37
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: settled-bridge
+  annotations:
+    settled/holds: "the bridge: the ledger's PostgreSQL, kms-dev, the indexer, the signer and the payer"
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.37
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.37
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.37
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: settled-obs
+  annotations:
+    settled/holds: "observability: Prometheus, Alertmanager, Grafana and the vault exporter"
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.37
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.37
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.37
