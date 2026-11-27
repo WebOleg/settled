@@ -102,7 +102,10 @@ The tests check each of these by name: unit tests for each rule
 ([test/unit](../../contracts/test/unit)), fuzz tests over inputs
 ([test/fuzz](../../contracts/test/fuzz)), and invariant tests over random sequences of
 every call by every key, with a handler that keeps its own books next to the vault's
-([test/invariant](../../contracts/test/invariant)). A local check runs 1,000 fuzz runs
+([test/invariant](../../contracts/test/invariant)), and symbolic tests that Halmos proves
+for every value of their arguments
+([test/symbolic](../../contracts/test/symbolic)): a paid id never pays again, a payment
+never goes beyond what is owed or what the rate limit holds, and only the operator pays. A local check runs 1,000 fuzz runs
 and 128 invariant runs of 64 calls; CI runs 10,000 and 512 of 128.
 
 | Id | Invariant |

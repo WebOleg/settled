@@ -39,6 +39,6 @@ abstract contract VaultSetup is Test {
         vault.setTokenConfig(native, config);
         vault.setTokenConfig(address(token), config);
         vm.stopPrank();
-        vm.warp(block.timestamp + REFILL);
+        vm.warp(vm.getBlockTimestamp() + REFILL);
     }
 }

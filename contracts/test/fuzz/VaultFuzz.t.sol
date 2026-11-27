@@ -65,11 +65,11 @@ contract VaultFuzzTest is VaultSetup {
         uint256[24] memory paid;
         uint256 n;
         for (uint256 i; i < amounts.length; i++) {
-            vm.warp(block.timestamp + bound(gaps[i], 0, 2 * REFILL));
+            vm.warp(vm.getBlockTimestamp() + bound(gaps[i], 0, 2 * REFILL));
             uint256 amount = bound(amounts[i], 1, LARGE - 1);
             vm.prank(operator);
             try vault.withdraw(bytes32(i + 1), native, recipient, amount) {
-                times[n] = block.timestamp;
+                times[n] = vm.getBlockTimestamp();
                 paid[n] = amount;
                 n++;
             } catch (bytes memory reason) {
@@ -93,7 +93,7 @@ contract VaultFuzzTest is VaultSetup {
         deposit(native, CAPACITY);
         vm.prank(operator);
         vault.withdraw("w", native, recipient, spent);
-        vm.warp(block.timestamp + wait);
+        vm.warp(vm.getBlockTimestamp() + wait);
         uint256 expected = CAPACITY - spent + wait * CAPACITY / REFILL;
         assertEq(vault.available(native), expected > CAPACITY ? CAPACITY : expected);
     }

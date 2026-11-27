@@ -55,7 +55,7 @@ contract VaultLayoutTest is VaultSetup {
         // 1: buckets[token] = (level, updatedAt) packed. Nothing was paid at once since the
         // token was configured one refill period ago, empty.
         bytes32 bucket = keccak256(abi.encode(native, slotAt(1)));
-        assertEq(read(bucket), uint256(block.timestamp - REFILL) << 128);
+        assertEq(read(bucket), uint256(vm.getBlockTimestamp() - REFILL) << 128);
         // 2: accounted[token].
         assertEq(read(keccak256(abi.encode(native, slotAt(2)))), vault.accounted(native));
         // 3: withdrawals[id] = (status, releaseAt, token) packed, to, amount.

@@ -66,11 +66,11 @@ targets.
 | Target | Tool | Fails on |
 |---|---|---|
 | `check-docs` | [scripts/check-docs.sh](scripts/check-docs.sh) | CRLF line endings, a missing final newline, trailing spaces outside Markdown, an em dash in Markdown, a relative link to a file that does not exist |
-| `check-images` | [scripts/check-images.sh](scripts/check-images.sh) | a container image in a compose file, a script or the Makefile that is not pinned by digest |
+| `check-images` | [scripts/check-images.sh](scripts/check-images.sh) | a container image in a compose file, a script, the Makefile or a Dockerfile `FROM` that is not pinned by digest |
 | `check-shell` | shellcheck | any finding in a tracked shell script |
 | `check-secrets` | gitleaks | a secret anywhere in the git history; findings are printed redacted |
 | `check-go` | gofmt, go vet, go test | an unformatted file, a vet finding or a failing test |
-| `check-contracts` | [scripts/contracts/check.sh](scripts/contracts/check.sh), forge in the pinned Foundry image | an unformatted contract, a compiler warning, a source file that built no artifact, a failing test, or unit test gas that differs from `contracts/.gas-snapshot` |
+| `check-contracts` | [scripts/contracts/check.sh](scripts/contracts/check.sh), forge in the pinned Foundry image | an unformatted contract, a compiler warning, a source file that built no artifact, a failing test, unit test gas that differs from `contracts/.gas-snapshot`, or a symbolic test Halmos does not prove |
 
 The checks run with gitleaks 8.30.1, shellcheck 0.11.0, Go 1.26.2 and Foundry v1.9.0,
 locally and in CI. CI installs shellcheck and gitleaks with

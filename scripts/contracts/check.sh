@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Checks the contracts in the pinned Foundry image: formatting, a build without compiler
 # warnings, an artifact for every source file (forge in a broken image once exited 0 and
-# built nothing), the tests, and the gas of the unit tests against .gas-snapshot. Run as the calling user, with HOME on
+# built nothing), the tests, the gas of the unit tests against .gas-snapshot, and the
+# symbolic tests with Halmos, in its own image (infra/images/halmos), built here when the
+# image for the current Dockerfile and requirements is missing. Run as the calling user, with HOME on
 # .cache/foundry, so files in the repository stay owned by that user and solc is
 # downloaded once.
 set -euo pipefail
@@ -43,4 +45,18 @@ fi
 if [ -f contracts/.gas-snapshot ]; then
   out="$(forge snapshot --check --match-path 'test/unit/*' 2>&1)" || { printf '%s\n' "$out" | grep -iE 'diff|changed|mismatch|fail' | head -20; fail "gas differs from .gas-snapshot; run make contracts-snapshot and review the change"; }
 fi
+# Halmos runs on linux/amd64 (no arm64 wheel of the z3 it pins) and with its own home:
+# forge inside it downloads an amd64 solc, which must not land in the native cache.
+# Built here from pinned bases; the tag is the hash of what it is built from.
+halmos_tag="settled-halmos:$(cat infra/images/halmos/Dockerfile infra/images/halmos/requirements.txt | shasum -a 256 | cut -c1-12)"
+if ! docker image inspect "$halmos_tag" >/dev/null 2>&1; then
+  echo "halmos image     building $halmos_tag"
+  docker build -q --platform linux/amd64 -t "$halmos_tag" infra/images/halmos >/dev/null || fail "could not build the Halmos image"
+fi
+mkdir -p .cache/halmos
+out="$(docker run --rm --platform linux/amd64 -u "$(id -u):$(id -g)" -e HOME=/cache -v "$root/.cache/halmos:/cache" \
+  -v "$root/contracts:/work" -w /work "$halmos_tag" \
+  --solver z3 --match-contract VaultSymbolicTest --solver-timeout-assertion 60000 2>&1)" \
+  || { printf '%s\n' "$out" | grep -vE '^\s*$' | tail -30; fail "symbolic tests failed"; }
+printf '%s\n' "$out" | grep -E '^Symbolic test result' | tail -1
 echo "check-contracts: ok, $sources source files built, tests passed"

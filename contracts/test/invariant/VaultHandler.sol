@@ -120,7 +120,7 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
         vm.prank(operator);
         try vault.executeQueued(id) {
             if (paused) succeededWhilePaused = true;
-            if (block.timestamp < w.releaseAt) paidEarly = true;
+            if (vm.getBlockTimestamp() < w.releaseAt) paidEarly = true;
             if (cancelled[id]) paidCancelled = true;
             _paid(id, w.token, w.amount);
             calls["execute"]++;
@@ -151,7 +151,7 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
     }
 
     function warp(uint256 seconds_) external {
-        vm.warp(block.timestamp + bound(seconds_, 0, 2 hours));
+        vm.warp(vm.getBlockTimestamp() + bound(seconds_, 0, 2 hours));
     }
 
     /// Funds sent to the vault without deposit: owed to no one, skimmable.
@@ -225,12 +225,12 @@ contract VaultHandler is CommonBase, StdCheats, StdUtils {
     /// Every span ending at this payment, against capacity + capacity * t / refillPeriod,
     /// in exact integer arithmetic.
     function _checkRate(address t, uint256 amount) internal {
-        payTimes[t].push(block.timestamp);
+        payTimes[t].push(vm.getBlockTimestamp());
         payAmounts[t].push(amount);
         uint256 sum;
         for (uint256 i = payTimes[t].length; i > 0; i--) {
             sum += payAmounts[t][i - 1];
-            uint256 span = block.timestamp - payTimes[t][i - 1];
+            uint256 span = vm.getBlockTimestamp() - payTimes[t][i - 1];
             if (sum * refillPeriod > uint256(capacity) * refillPeriod + span * capacity) rateLimitExceeded = true;
         }
     }

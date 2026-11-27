@@ -20,6 +20,10 @@ cbor_metadata = false
 # Warnings count as failures in make check-contracts; the libraries' own (OpenZeppelin's
 # note on transient storage, which its reentrancy guard uses safely) are not ours to fix.
 ignored_warnings_from = ["lib"]
+# Tests are compiled as written. With dynamic test linking, forge turns `new Vault()` in
+# a test into a vm.deployCode call, which Halmos does not implement: the symbolic tests
+# stopped in setUp() on it.
+dynamic_test_linking = false
 remappings = [
   "forge-std/=lib/forge-std/src/",
   "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",

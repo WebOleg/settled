@@ -7,7 +7,7 @@ keep are in [docs/design/vault.md](../docs/design/vault.md).
 
 | Command | What it does |
 |---|---|
-| `make check-contracts` | Checks formatting, builds without compiler warnings, checks that every source file built an artifact, runs the tests, and compares the gas of the unit tests with `.gas-snapshot`; part of `make check` |
+| `make check-contracts` | Checks formatting, builds without compiler warnings, checks that every source file built an artifact, runs the tests, compares the gas of the unit tests with `.gas-snapshot`, and runs the symbolic tests with Halmos; part of `make check` |
 | `make contracts-snapshot` | Records the gas of the unit tests in `.gas-snapshot`. A change in gas shows in review as a change to that file. |
 
 `FOUNDRY_PROFILE=ci` runs the fuzz and invariant tests deeper, as CI does
@@ -24,6 +24,7 @@ the host.
 | OpenZeppelin Contracts | v5.7.0 | git submodule at the tag's commit |
 | OpenZeppelin Contracts Upgradeable | v5.7.0 | git submodule at the tag's commit |
 | forge-std | v1.17.0 | git submodule at the tag's commit |
+| Halmos | 0.3.3, with z3 4.12.6 | [infra/images/halmos](../infra/images/halmos): bases by digest, Python packages by sha256 |
 
 | Choice | Reason |
 |---|---|
@@ -31,6 +32,8 @@ the host.
 | solc 0.8.39 | The latest release, and the only recent one with no known bug in the Solidity bug list; 0.8.38 has two storage copy bugs. Every file uses this exact version. |
 | `evm_version = "cancun"` | The newest opcodes the contracts need: transient storage, for the reentrancy guard. |
 | No metadata hash in the bytecode | The same source always gives the same bytes, so a deployed contract can be compared with a local build. |
+| Halmos in its own image, for linux/amd64 | Halmos 0.3.3 pins z3-solver 4.12.6.0, which has no arm64 wheel. The image runs natively in CI and under emulation on an arm64 Mac; the image tag is a hash of the Dockerfile and the requirements, so a change rebuilds it. |
+| z3, not Halmos' default yices | Under emulation yices starts but is killed by an illegal instruction as soon as it solves; z3 gives the same answer on both machines. A trial run showed z3 proving a property and finding the counterexample of a false one. |
 | Libraries as git submodules at a tag's commit | Pinned by content, reviewed in the repository like any other change. Installing from a branch is the mistake OpenZeppelin warns about. |
 
 ## Files
@@ -44,6 +47,7 @@ the host.
 | [test/unit/VaultLayout.t.sol](test/unit/VaultLayout.t.sol) | I10: where each field of the state lives, read slot by slot from the proxy |
 | [test/fuzz/VaultFuzz.t.sol](test/fuzz/VaultFuzz.t.sol) | The rules over random amounts, ids and times; the rate limit checked over every span |
 | [test/invariant](test/invariant) | I1 to I9 over random sequences of every call by every key; the handler keeps its own books |
+| [test/symbolic/VaultSymbolic.t.sol](test/symbolic/VaultSymbolic.t.sol) | I1, I2, I3, I4, I7 proved by Halmos for every value of the arguments |
 | [test/utils/VaultSetup.sol](test/utils/VaultSetup.sol) | The vault behind its proxy, configured, as the fuzz, invariant and layout tests start |
 | [test/mocks](test/mocks) | Tokens that misbehave (a fee on transfer, no return value, a callback into the vault), a recipient that refuses ETH, and a next version of the vault for the upgrade test |
 | `.gas-snapshot` | Gas of each unit test |

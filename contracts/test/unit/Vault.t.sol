@@ -49,7 +49,7 @@ contract VaultTest is Test {
         vault.setTokenConfig(address(token), config());
         vm.stopPrank();
         // Buckets start empty and fill over one refill period.
-        vm.warp(block.timestamp + REFILL);
+        vm.warp(vm.getBlockTimestamp() + REFILL);
 
         vm.deal(user, 1_000 ether);
         token.mint(user, 1_000 ether);
@@ -255,12 +255,12 @@ contract VaultTest is Test {
         withdraw("c", native, 3 ether);
 
         // A tenth of the refill period refills a tenth of the capacity.
-        vm.warp(block.timestamp + REFILL / 10);
+        vm.warp(vm.getBlockTimestamp() + REFILL / 10);
         assertEq(vault.available(native), 12 ether);
         withdraw("c", native, 3 ether);
 
         // Never above capacity.
-        vm.warp(block.timestamp + 10 * REFILL);
+        vm.warp(vm.getBlockTimestamp() + 10 * REFILL);
         assertEq(vault.available(native), CAPACITY);
     }
 
@@ -280,7 +280,7 @@ contract VaultTest is Test {
         ReenteringToken re = new ReenteringToken();
         vm.prank(admin);
         vault.setTokenConfig(address(re), config());
-        vm.warp(block.timestamp + REFILL);
+        vm.warp(vm.getBlockTimestamp() + REFILL);
         re.mint(user, 10 ether);
         vm.startPrank(user);
         re.approve(address(vault), 10 ether);
@@ -310,7 +310,7 @@ contract VaultTest is Test {
 
     function test_withdraw_largeIsQueuedNotPaid() public {
         depositNative(100 ether);
-        uint64 releaseAt = uint64(block.timestamp) + DELAY;
+        uint64 releaseAt = uint64(vm.getBlockTimestamp()) + DELAY;
         vm.expectEmit(address(vault));
         emit IVault.WithdrawalQueued("big", native, recipient, LARGE, releaseAt);
         assertEq(uint8(withdraw("big", native, LARGE)), uint8(IVault.WithdrawalStatus.Queued));
@@ -356,7 +356,7 @@ contract VaultTest is Test {
         vm.prank(guardian);
         vault.cancelQueued("big");
 
-        vm.warp(block.timestamp + DELAY);
+        vm.warp(vm.getBlockTimestamp() + DELAY);
         vm.prank(operator);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -394,7 +394,7 @@ contract VaultTest is Test {
         withdraw("big", address(token), 60 ether);
         vm.prank(admin);
         vault.setTokenConfig(address(token), IVault.TokenConfig(false, 0, 0, 0));
-        vm.warp(block.timestamp + DELAY);
+        vm.warp(vm.getBlockTimestamp() + DELAY);
         vm.prank(operator);
         vm.expectRevert(abi.encodeWithSelector(IVault.TokenNotAllowed.selector, address(token)));
         vault.executeQueued("big");
@@ -414,7 +414,7 @@ contract VaultTest is Test {
         vault.deposit{value: 1}(native, 1, ACCOUNT);
         vm.expectRevert(paused);
         withdraw("w1", native, 1 ether);
-        vm.warp(block.timestamp + DELAY);
+        vm.warp(vm.getBlockTimestamp() + DELAY);
         vm.prank(operator);
         vm.expectRevert(paused);
         vault.executeQueued("big");
