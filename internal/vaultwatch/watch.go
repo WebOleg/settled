@@ -41,8 +41,9 @@ const MaxRange = 2000
 
 // Record is the part of the deployment record the watcher reads.
 type Record struct {
-	Vault string `json:"vault"`
-	Block uint64 `json:"block"`
+	ChainID uint64 `json:"chainId"`
+	Vault   string `json:"vault"`
+	Block   uint64 `json:"block"`
 }
 
 // ReadRecord reads the deployment record at path. A missing file is no error: there is

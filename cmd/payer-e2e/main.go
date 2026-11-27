@@ -13,21 +13,30 @@
 //     the replacement is mined;
 //  6. a large withdrawal is queued by the vault and paid with executeQueued after its
 //     delay;
-//  7. once final, the indexer settles every withdrawal, the payer closes every
+//  7. the signer refuses what the ledger does not hold (another recipient, another
+//     amount, another contract, value) and what passes its velocity limit; a payer
+//     refused waits, records why, and takes no nonce;
+//  8. once final, the indexer settles every withdrawal, the payer closes every
 //     transaction, and the ledger equals what the vault on chain accounts for, to the
 //     wei.
 //
-// It connects as three logins, one per role: the requester, the payer and the indexer.
+// The payer holds no key: every transaction is signed by the withdrawal signer
+// (internal/signer), served here over TLS with client certificates as on the devnet,
+// under its policy and against the ledger. It connects as four logins, one per role:
+// the requester, the payer, the signer and the indexer.
 package main
 
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
 	"math/big"
+	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -42,6 +51,7 @@ import (
 	"github.com/WebOleg/settled/internal/anvil"
 	"github.com/WebOleg/settled/internal/deposits"
 	"github.com/WebOleg/settled/internal/ledger"
+	"github.com/WebOleg/settled/internal/signer"
 	"github.com/WebOleg/settled/internal/vaultconf"
 	"github.com/WebOleg/settled/internal/withdrawals"
 )
@@ -50,8 +60,8 @@ func main() {
 	rpcURL := flag.String("rpc", "http://127.0.0.1:8545", "anvil's JSON-RPC")
 	outDir := flag.String("out", "contracts/out", "forge build output")
 	recordRoot := flag.String("record", "", "if set, a folder to write the vault's deployment record under, as vault-deploy does, for bridge-check")
-	var dbs [3]struct{ url, password *string }
-	for i, role := range []string{"requester", "payer", "indexer"} {
+	var dbs [4]struct{ url, password *string }
+	for i, role := range []string{"requester", "payer", "indexer", "signer"} {
 		dbs[i].url = flag.String(role+"-db", "", "the ledger database as the "+role+"'s login, without the password")
 		dbs[i].password = flag.String(role+"-db-password-file", "", "file holding the "+role+"'s password")
 	}
@@ -59,7 +69,7 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	var conns [3]*ledger.Ledger
+	var conns [4]*ledger.Ledger
 	for i := range dbs {
 		dsn, err := ledger.DSN(*dbs[i].url, *dbs[i].password)
 		if err != nil {
@@ -70,7 +80,7 @@ func main() {
 		}
 		defer conns[i].Close()
 	}
-	if err := run(ctx, *rpcURL, *outDir, *recordRoot, conns[0], conns[1], conns[2]); err != nil {
+	if err := run(ctx, *rpcURL, *outDir, *recordRoot, conns[0], conns[1], conns[2], conns[3]); err != nil {
 		fail(err)
 	}
 	fmt.Println("payer-e2e: ok")
@@ -109,12 +119,15 @@ type e2e struct {
 	payer     *ledger.Ledger
 	indexer   *deposits.Indexer
 	operator  *ecdsa.PrivateKey
-	account   common.Hash
-	paid      *big.Int // what the customer has withdrawn
-	ids       []common.Hash
+	// service is the signer, remote the payer's way to it over TLS.
+	service *signer.Service
+	remote  *signer.Remote
+	account common.Hash
+	paid    *big.Int // what the customer has withdrawn
+	ids     []common.Hash
 }
 
-func run(ctx context.Context, rpcURL, outDir, recordRoot string, requester, payerDB, indexerDB *ledger.Ledger) error {
+func run(ctx context.Context, rpcURL, outDir, recordRoot string, requester, payerDB, indexerDB, signerDB *ledger.Ledger) error {
 	client, err := ethclient.DialContext(ctx, rpcURL)
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", rpcURL, err)
@@ -152,9 +165,23 @@ func run(ctx context.Context, rpcURL, outDir, recordRoot string, requester, paye
 		}
 	}
 
+	chainID, err := client.ChainID(ctx)
+	if err != nil {
+		return err
+	}
 	e := &e2e{ctx: ctx, client: client, vault: vault, requester: requester, payer: payerDB, operator: keys[1],
 		account: common.HexToHash("0xbeef"), paid: new(big.Int),
-		indexer: &deposits.Indexer{Chain: deposits.RPC{Client: client}, Ledger: indexerDB, Vault: vault.At, Start: vault.Block, MaxRange: 64, MaxBlocks: 2000}}
+		indexer: &deposits.Indexer{Chain: deposits.RPC{Client: client}, Ledger: indexerDB, Vault: vault.At, Start: vault.Block, MaxRange: 64, MaxBlocks: 2000},
+		service: &signer.Service{Key: signer.NewFileKey(keys[1]), DB: signerDB.Pool(), Policy: signer.Policy{
+			ChainID: chainID, Vault: vault.At, MaxGas: 500_000, MaxFeeCap: new(big.Int).Mul(big.NewInt(1000), big.NewInt(1e9)),
+			Window: time.Hour, Limit: anvil.Ether(20),
+		}}}
+	stop, err := e.serveSigner()
+	if err != nil {
+		return err
+	}
+	defer stop()
+	ok("the signer serves over TLS, client certificates required", fmt.Sprintf("signs for %s; the payer holds no key", e.remote.Address()))
 	if _, err := vault.Deposit(ctx, client, keys[3], e.account, anvil.Ether(8), true); err != nil {
 		return err
 	}
@@ -168,7 +195,7 @@ func run(ctx context.Context, rpcURL, outDir, recordRoot string, requester, paye
 		return err
 	}
 
-	for _, s := range []func() error{e.paidOnce, e.failedSend, e.reorganised, e.twoPayers, e.replaced, e.queued, e.final} {
+	for _, s := range []func() error{e.paidOnce, e.failedSend, e.reorganised, e.twoPayers, e.replaced, e.queued, e.refused, e.final} {
 		if err := s(); err != nil {
 			return err
 		}
@@ -176,8 +203,41 @@ func run(ctx context.Context, rpcURL, outDir, recordRoot string, requester, paye
 	return nil
 }
 
+// serveSigner serves the signer on a local port over TLS, with the devnet's kind of
+// certificates made in a folder of their own, and connects the payer's side to it.
+func (e *e2e) serveSigner() (func(), error) {
+	dir, err := os.MkdirTemp("", "payer-e2e-tls-")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := signer.EnsureTLS(dir, time.Now()); err != nil {
+		return nil, err
+	}
+	serverTLS, err := signer.ServerTLS(filepath.Join(dir, signer.CAFile), filepath.Join(dir, signer.ServerCertFile), filepath.Join(dir, signer.ServerKeyFile))
+	if err != nil {
+		return nil, err
+	}
+	clientTLS, err := signer.ClientTLS(filepath.Join(dir, signer.CAFile), filepath.Join(dir, signer.ClientCertFile), filepath.Join(dir, signer.ClientKeyFile))
+	if err != nil {
+		return nil, err
+	}
+	clientTLS.ServerName = "localhost"
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", serverTLS)
+	if err != nil {
+		return nil, err
+	}
+	srv := &http.Server{Handler: signer.Handler(e.service, map[string]bool{signer.ClientName: true}), ReadHeaderTimeout: 5 * time.Second}
+	go func() { _ = srv.Serve(ln) }()
+	stop := func() { _ = srv.Close(); _ = os.RemoveAll(dir) }
+	if e.remote, err = signer.NewRemote(e.ctx, "https://"+ln.Addr().String(), clientTLS); err != nil {
+		stop()
+		return nil, err
+	}
+	return stop, nil
+}
+
 func (e *e2e) newPayer(chain withdrawals.Chain, l *ledger.Ledger) *withdrawals.Payer {
-	return &withdrawals.Payer{Chain: chain, Ledger: l, Vault: e.vault.At, Key: e.operator, ResendAfter: 0,
+	return &withdrawals.Payer{Chain: chain, Ledger: l, Vault: e.vault.At, Signer: e.remote, ResendAfter: 0,
 		MaxFeeCap: new(big.Int).Mul(big.NewInt(1000), big.NewInt(1e9)), Batch: 50}
 }
 
@@ -559,7 +619,85 @@ func (e *e2e) queued() error {
 	return nil
 }
 
-// 7. Final: settled, closed, and equal to the vault.
+// 7. The signer stands between the payer and the key.
+func (e *e2e) refused() error {
+	to := recipient("refused")
+	id, err := e.submit("refused", to, milli(300))
+	if err != nil {
+		return err
+	}
+	chainID, err := e.client.ChainID(e.ctx)
+	if err != nil {
+		return err
+	}
+	nonce, err := e.client.NonceAt(e.ctx, e.remote.Address(), nil)
+	if err != nil {
+		return err
+	}
+	ask := func(to common.Address, data []byte, value *big.Int) error {
+		_, err := e.remote.Sign(e.ctx, types.NewTx(&types.DynamicFeeTx{ChainID: chainID, Nonce: nonce, GasTipCap: big.NewInt(1e9),
+			GasFeeCap: big.NewInt(10e9), Gas: 200_000, To: &to, Value: value, Data: data}))
+		return err
+	}
+	pack := func(args ...any) []byte {
+		data, err := withdrawals.VaultABI.Pack("withdraw", args...)
+		if err != nil {
+			panic(err)
+		}
+		return data
+	}
+	thief := recipient("thief")
+	for _, c := range []struct {
+		name, rule string
+		to         common.Address
+		data       []byte
+		value      *big.Int
+	}{
+		{"another recipient", "ledger", e.vault.At, pack(id, deposits.Native, thief, milli(300)), nil},
+		{"another amount", "ledger", e.vault.At, pack(id, deposits.Native, to, anvil.Ether(3)), nil},
+		{"an id the ledger never requested", "ledger", e.vault.At, pack(crypto.Keccak256Hash([]byte("forged")), deposits.Native, thief, milli(300)), nil},
+		{"another contract", "destination", thief, pack(id, deposits.Native, to, milli(300)), nil},
+		{"a plain transfer of the key's ETH", "value", e.vault.At, nil, anvil.Ether(1)},
+	} {
+		err := ask(c.to, c.data, c.value)
+		var refused *withdrawals.Refused
+		if !errors.As(err, &refused) || refused.Rule != c.rule {
+			return fmt.Errorf("the signer asked for %s: %v, want it refused under %s", c.name, err, c.rule)
+		}
+	}
+	ok("the signer refuses what the ledger does not hold", "another recipient, amount, id, contract; a plain transfer")
+
+	// A signer whose velocity limit this withdrawal passes: the payer is refused, waits,
+	// and takes no nonce; the signer of the service then pays it.
+	strict := *e.service
+	strict.Policy.Limit = milli(100)
+	p := e.newPayer(e.rpc(), e.payer)
+	p.Signer = signer.Local{Service: &strict, Client: signer.ClientName}
+	if rep, err := e.step(p, "under a velocity limit of 0.1 ETH"); err != nil {
+		return err
+	} else if rep.Refused != 1 || rep.Signed != 0 {
+		return fmt.Errorf("under a velocity limit of 0.1 ETH: %+v, want it refused", rep)
+	}
+	if txs, _, err := e.versions(id); err != nil || txs != 0 {
+		return fmt.Errorf("after the refusal: %d transactions recorded, %v; want none", txs, err)
+	}
+	if n, err := e.client.NonceAt(e.ctx, e.remote.Address(), nil); err != nil || n != nonce {
+		return fmt.Errorf("after the refusal the key's nonce is %d, %v; want %d", n, err, nonce)
+	}
+	if _, err := e.step(e.newPayer(e.rpc(), e.payer), "with the service's signer"); err != nil {
+		return err
+	}
+	if err := e.onChain(id, withdrawals.Paid); err != nil {
+		return err
+	}
+	if err := e.received(to, milli(300)); err != nil {
+		return err
+	}
+	ok("a payer the velocity limit refuses waits", "nothing recorded, no nonce taken; paid within the limit after")
+	return nil
+}
+
+// 8. Final: settled, closed, and equal to the vault.
 func (e *e2e) final() error {
 	if err := e.balance("held while not final", anvil.Ether(8), e.paid); err != nil {
 		return err
@@ -617,5 +755,32 @@ func (e *e2e) final() error {
 		return fmt.Errorf("the ledger holds %s wei for the vault, the vault accounts for %s at block %s", held, onChain, fin.Number)
 	}
 	ok("ledger equals the vault on chain", fmt.Sprintf("%s wei at finalized block %s; none in suspense", held, fin.Number))
+
+	// Every transaction recorded was signed by the signer, and recorded there first.
+	rows, err := e.payer.Pool().Query(e.ctx, "SELECT hash FROM withdrawal_txs")
+	if err != nil {
+		return err
+	}
+	var hashes [][]byte
+	for rows.Next() {
+		var h []byte
+		if err := rows.Scan(&h); err != nil {
+			rows.Close()
+			return err
+		}
+		hashes = append(hashes, h)
+	}
+	rows.Close()
+	var unsigned, signed, refused int
+	if err := e.service.DB.QueryRow(e.ctx, `SELECT count(*) FILTER (WHERE NOT EXISTS (SELECT FROM signer_log l WHERE l.decision = 'signed' AND l.tx_hash = h)),
+		(SELECT count(*) FROM signer_log WHERE decision = 'signed'), (SELECT count(*) FROM signer_log WHERE decision = 'refused')
+		FROM unnest($1::bytea[]) h`, hashes).Scan(&unsigned, &signed, &refused); err != nil {
+		return err
+	}
+	if unsigned != 0 || signed < len(hashes) || refused != 6 {
+		return fmt.Errorf("signer_log: %d of %d transactions without a signature recorded, %d signed, %d refused; want none, at least %d, 6",
+			unsigned, len(hashes), signed, refused, len(hashes))
+	}
+	ok("every transaction was signed by the signer, recorded", fmt.Sprintf("%d transactions, %d signatures, %d refusals in signer_log", len(hashes), signed, refused))
 	return nil
 }

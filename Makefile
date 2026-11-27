@@ -176,16 +176,18 @@ vault-check: ## Run the vault's rules on the L2 with real transactions and accou
 vault-reset: ## Forget the vault deployment and keep its keys, for a new L2
 	@scripts/contracts/vault-deploy.sh --reset
 
-bridge-up: ## Start the ledger's PostgreSQL, migrate it, and start the deposit indexer and the withdrawal payer; needs l2-up
+bridge-up: ## Start the ledger's PostgreSQL, migrate it, and start the deposit indexer, the withdrawal signer and payer; needs l2-up
 	@scripts/bridge/bridge-init.sh
 	@go run ./cmd/vault-payer -secret-only
+	@go run ./cmd/signer-tls
 	@$(BRIDGE) up -d --quiet-pull --wait postgres
 	@go run ./cmd/ledger-migrate -db 'postgres://admin@127.0.0.1:15432/ledger?sslmode=disable' \
 		-db-password-file .devnet/bridge/postgres-admin.txt \
 		-login indexer:deposit_indexer:.devnet/bridge/indexer.txt -login auditor:ledger_reader:.devnet/bridge/auditor.txt \
 		-login ops_a:suspense_operator:.devnet/bridge/ops-a.txt -login ops_b:suspense_operator:.devnet/bridge/ops-b.txt \
-		-login payer:withdrawal_payer:.devnet/bridge/payer.txt -login requester:withdrawal_requester:.devnet/bridge/requester.txt
-	@$(BRIDGE) up -d --quiet-pull --build --remove-orphans deposit-indexer withdrawal-payer
+		-login payer:withdrawal_payer:.devnet/bridge/payer.txt -login requester:withdrawal_requester:.devnet/bridge/requester.txt \
+		-login signer:withdrawal_signer:.devnet/bridge/signer.txt
+	@$(BRIDGE) up -d --quiet-pull --build --remove-orphans deposit-indexer withdrawal-signer withdrawal-payer
 	@echo "bridge-up: ok"
 
 bridge-check: ## Reconcile the ledger with the chain, read independently: every final deposit posted, to the wei
@@ -204,10 +206,10 @@ deposit-check: ## Deposit 0.1 ETH to the vault and follow it: held at once, cred
 bridge-drill: ## Stop the ledger's PostgreSQL, see DepositIndexerStale fire and reach Alertmanager, start it, see it clear
 	@scripts/bridge/bridge-drill.sh
 
-bridge-logs: ## Follow the logs of the deposit indexer, the withdrawal payer and the ledger's PostgreSQL
+bridge-logs: ## Follow the logs of the deposit indexer, the withdrawal signer and payer, and the ledger's PostgreSQL
 	@$(BRIDGE) logs -f --tail 50
 
-bridge-down: ## Stop the deposit indexer, the withdrawal payer and the ledger's PostgreSQL; keep the ledger
+bridge-down: ## Stop the deposit indexer, the withdrawal signer and payer, and the ledger's PostgreSQL; keep the ledger
 	@$(BRIDGE) down
 
 bridge-reset: ## Stop the bridge and delete the ledger; its passwords are made again at the next bridge-up

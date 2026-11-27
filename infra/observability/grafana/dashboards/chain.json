@@ -1003,7 +1003,7 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 6,
+        "w": 5,
         "x": 0,
         "y": 19
       },
@@ -1069,8 +1069,8 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 6,
-        "x": 6,
+        "w": 5,
+        "x": 5,
         "y": 19
       },
       "targets": [
@@ -1135,8 +1135,8 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 6,
-        "x": 12,
+        "w": 5,
+        "x": 10,
         "y": 19
       },
       "targets": [
@@ -1192,6 +1192,72 @@
     },
     {
       "type": "stat",
+      "id": 43,
+      "title": "Signer refuses nothing",
+      "description": "Green: the withdrawal signer refused nothing in the last 10 minutes. Red: it refused a transaction its policy or the ledger does not allow; the value is how many. If red, see the runbook SignerRefused.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 15,
+        "y": 19
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(increase(withdrawal_signer_refusals_total{chain=\"l2\"}[10m]))",
+          "legendFormat": "Signer refuses nothing",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: refused",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "stat",
       "id": 39,
       "title": "Suspense explained",
       "description": "Green: every payment that left the vault without the ledger was explained, under four eyes, within a day. Red: one has waited a day or more; the value is how long the oldest has. If red, see the runbook SuspenseUnresolved.",
@@ -1201,8 +1267,8 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 6,
-        "x": 18,
+        "w": 4,
+        "x": 20,
         "y": 19
       },
       "targets": [

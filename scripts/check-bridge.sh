@@ -7,8 +7,8 @@
 # without the ledger is resolved with cmd/suspense by two operators, each with a login
 # of their own: the one who proposed cannot approve it, the second can. Last, the
 # withdrawal payer end to end (cmd/payer-e2e) on an anvil and a database of its own:
-# crashes, a reorganisation, two payers at once, a fee rise and the vault's queue; then
-# bridge-check reconciles what it left with the chain.
+# crashes, a reorganisation, two payers at once, a fee rise, the vault's queue and the
+# signer's refusals; then bridge-check reconciles what it left with the chain.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -42,7 +42,7 @@ for port in "$anvil_port" "$anvil2_port"; do
   done
 done
 
-(umask 077 && printf '%s\n' "$PG_PASSWORD" > "$dir/admin" && for f in indexer ops_a ops_b requester payer auditor; do openssl rand -hex 24 > "$dir/$f"; done)
+(umask 077 && printf '%s\n' "$PG_PASSWORD" > "$dir/admin" && for f in indexer ops_a ops_b requester payer signer auditor; do openssl rand -hex 24 > "$dir/$f"; done)
 unset PG_PASSWORD
 go run ./cmd/ledger-migrate -db "postgres://admin@127.0.0.1:${PG_PORT}/ledger?sslmode=disable" -db-password-file "$dir/admin" \
   -login "indexer:deposit_indexer:$dir/indexer" -login "ops_a:suspense_operator:$dir/ops_a" -login "ops_b:suspense_operator:$dir/ops_b"
@@ -68,10 +68,10 @@ printf 'ok    %-50s %s\n' "suspense is explained" "0 payments"
 docker exec "$pg" psql -q -U admin -d ledger -c "CREATE DATABASE payments" >/dev/null
 go run ./cmd/ledger-migrate -db "postgres://admin@127.0.0.1:${PG_PORT}/payments?sslmode=disable" -db-password-file "$dir/admin" \
   -login "indexer:deposit_indexer:$dir/indexer" -login "requester:withdrawal_requester:$dir/requester" -login "payer:withdrawal_payer:$dir/payer" \
-  -login "auditor:ledger_reader:$dir/auditor"
+  -login "signer:withdrawal_signer:$dir/signer" -login "auditor:ledger_reader:$dir/auditor"
 db() { printf -- '-%s-db\npostgres://%s@127.0.0.1:%s/payments?sslmode=disable\n-%s-db-password-file\n%s\n' "$1" "$1" "$PG_PORT" "$1" "$dir/$1"; }
 args=()
-while IFS= read -r a; do args+=("$a"); done < <(db requester; db payer; db indexer)
+while IFS= read -r a; do args+=("$a"); done < <(db requester; db payer; db indexer; db signer)
 go run ./cmd/payer-e2e -rpc "http://127.0.0.1:$anvil2_port" -out contracts/out -record "$dir/devnet" "${args[@]}"
 # The reconciliation of the devnet, from outside, on what the payer e2e left: every
 # deposit and payment on chain, each customer debited what its settled withdrawals paid.

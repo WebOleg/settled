@@ -295,6 +295,31 @@ Do:
 - A fall that is not the payer's own transactions means the key is used elsewhere:
   revoke its role through the timelock and pause the vault.
 
+## SignerRefused
+
+The withdrawal signer refused to sign at least once in the last 10 minutes. It signs
+only calls to the vault that pay what the ledger holds, within its fee, gas and velocity
+limits, for the payer's certificate. The payer does not ask for anything else, so a
+refusal means the payer, its host, the database or a certificate is not what it should
+be, or that the flow passed the velocity limit. Nothing was signed: the key did not act.
+
+Look at:
+- `signer_log` in the ledger, the latest refusals: the rule, the reason, the client's
+  certificate name, and what was asked (destination, method, withdrawal, recipient,
+  amount). `withdrawal_signer_refused_total` by rule says which rule at a glance.
+- `make bridge-logs` for the payer and the signer around that time.
+
+Do:
+- `velocity`: the flow passed the limit (`-limit-milli-eth` per `-window`). The payer
+  waits and asks again as the window moves on; nobody has to act unless the flow is
+  expected, and then the limit is raised by a person, in the signer's configuration.
+- `ledger`, `destination`, `value`, `method`, `client`: treat it as an incident. Stop the
+  payer (`docker compose -f infra/bridge/compose.yaml stop withdrawal-payer`); if the
+  refusal names a withdrawal, compare it with its request. The vault's own limits still
+  hold whatever is signed; pause it if anything was signed that should not have been.
+- `fee cap` or `gas`: the network asks more than the signer allows; see
+  WithdrawalsWaiting.
+
 ## SuspenseUnresolved
 
 A payment left the vault without the ledger, was posted to `suspense:ETH` once final,

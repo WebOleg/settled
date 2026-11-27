@@ -12,6 +12,7 @@ COPY internal/vaultwatch internal/vaultwatch
 COPY internal/ledger internal/ledger
 COPY internal/deposits internal/deposits
 COPY internal/withdrawals internal/withdrawals
+COPY internal/signer internal/signer
 COPY cmd/withdrawal-payer cmd/withdrawal-payer
 RUN CGO_ENABLED=0 GOTOOLCHAIN=local GOFLAGS=-mod=readonly go build -trimpath -ldflags=-s -o /out/withdrawal-payer ./cmd/withdrawal-payer
 

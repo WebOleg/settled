@@ -11,7 +11,7 @@ It needs the running L1, L2 and bridge (`make up` starts everything, this includ
 | Command | What it does |
 |---|---|
 | `make obs-up` | Creates the Grafana admin password on first run, checks the Prometheus config and rules with `promtool` and the Alertmanager config with `amtool`, then starts all three |
-| `make obs-check` | Shows that all twelve targets are up, Grafana works, anonymous visitors can read but not write, every panel query returns data, every alert rule matches its tile and has a runbook, and no alert fires |
+| `make obs-check` | Shows that all thirteen targets are up, Grafana works, anonymous visitors can read but not write, every panel query returns data, every alert rule matches its tile and has a runbook, and no alert fires |
 | `make alert-drill` | Stops op-batcher, shows its alerts fire and reach Alertmanager, starts it, shows them clear |
 | `make obs-password` | Copies the Grafana admin password to the clipboard without printing it |
 | `make obs-down` | Stops Prometheus, Alertmanager and Grafana and keeps their data |

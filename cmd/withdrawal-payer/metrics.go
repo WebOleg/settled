@@ -16,6 +16,7 @@ type metrics struct {
 	mu                                                 sync.Mutex
 	deployed                                           bool
 	signed, resent, bumped, capped, rejected, reopened uint64
+	refused                                            uint64
 	onChain, closed                                    uint64
 	steps, errors                                      uint64
 	lastStep, lastCheck                                time.Time
@@ -41,6 +42,7 @@ func (m *metrics) stepped(r withdrawals.Report, ok bool) {
 	m.resent += uint64(r.Resent)
 	m.bumped += uint64(r.Bumped)
 	m.capped += uint64(r.Capped)
+	m.refused += uint64(r.Refused)
 	m.rejected += uint64(r.Rejected)
 	m.reopened += uint64(r.Reopened)
 	m.onChain += uint64(r.OnChain)
@@ -99,6 +101,7 @@ func (m *metrics) write(out io.Writer) error {
 	metric("counter", "withdrawal_payer_resent_total", "Recorded transactions sent again, the same bytes.", m.resent)
 	metric("counter", "withdrawal_payer_replaced_total", "Transactions replaced under the same nonce with higher fees.", m.bumped)
 	metric("counter", "withdrawal_payer_capped_total", "Times a transaction could not be replaced: a tenth more would pass the fee cap.", m.capped)
+	metric("counter", "withdrawal_payer_refused_total", "Transactions the signer would not sign under its policy; nothing was recorded for them.", m.refused)
 	metric("counter", "withdrawal_payer_rejected_total", "Withdrawals the vault refuses for good; their holds released.", m.rejected)
 	metric("counter", "withdrawal_payer_reopened_total", "Withdrawals a reorganisation took off the chain, paid again.", m.reopened)
 	metric("counter", "withdrawal_payer_on_chain_total", "Withdrawals the vault was seen to have paid or queued.", m.onChain)

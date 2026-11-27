@@ -29,9 +29,10 @@ fuzz, invariant and symbolic tests check its invariants, and a written review li
 every finding. A double-entry ledger in PostgreSQL keeps the exchange's books: the
 deposit indexer credits a deposit only once it is final and reverses what a
 reorganisation removes; the withdrawal payer pays each withdrawal once through crashes,
-reorganisations, fee rises and payers running at once; a payment made without the
-ledger waits in suspense until two operators explain it; and the ledger equals what
-the vault on chain accounts for, to the wei.
+reorganisations, fee rises and payers running at once, holding no key: a separate
+signer signs only what the ledger holds, within its limits, and records every decision;
+a payment made without the ledger waits in suspense until two operators explain it; and
+the ledger equals what the vault on chain accounts for, to the wei.
 This file describes only what exists and grows with the code.
 
 The rules the code follows are in [ENGINEERING.md](ENGINEERING.md). The plan is in

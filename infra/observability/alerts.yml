@@ -180,6 +180,16 @@ groups:
           summary: The withdrawal payer's key holds less than 0.01 ETH for gas on the L2; it will soon sign nothing that is mined.
           runbook: docs/runbooks.md#payerfundslow
 
+      - alert: SignerRefused
+        expr: max(increase(withdrawal_signer_refusals_total{chain="l2"}[10m])) >= 1
+        for: 0s
+        labels:
+          severity: page
+          tile: Signer refuses nothing
+        annotations:
+          summary: The withdrawal signer refused to sign in the last 10 minutes; something asked for a transaction its policy or the ledger does not allow.
+          runbook: docs/runbooks.md#signerrefused
+
       - alert: SuspenseUnresolved
         expr: max(ledger_suspense_oldest_seconds{chain="l2"}) >= 86400
         for: 0s

@@ -29,6 +29,7 @@ bridge's deposit indexer with them.
 | vault-exporter ([cmd/vault-exporter](../../cmd/vault-exporter/main.go)) | `-listen=:9100` | `vault-exporter:9100/metrics` |
 | deposit-indexer ([cmd/deposit-indexer](../../cmd/deposit-indexer/main.go)) | `-listen=:9110` | `deposit-indexer:9110/metrics`, on the bridge's network |
 | withdrawal-payer ([cmd/withdrawal-payer](../../cmd/withdrawal-payer/main.go)) | `-listen=:9111` | `withdrawal-payer:9111/metrics`, on the bridge's network |
+| withdrawal-signer ([cmd/withdrawal-signer](../../cmd/withdrawal-signer/main.go)) | `-metrics=:9112` | `withdrawal-signer:9112/metrics`, on the bridge's network |
 
 The vault exporter is built from this repository ([infra/images/vault-exporter](../../infra/images/vault-exporter/Dockerfile)).
 It reads the vault from the verifier node, which derives the chain from the L1, every 2
@@ -63,7 +64,7 @@ dashboard follows three rules:
 
 1. One screen answers "is the chain healthy?" with six tiles, "is the vault safe?" with
    four more, "are deposits credited?" with four more, and "are withdrawals paid?"
-   with four more. Each tile asks one question in plain words, shows one number with its
+   with five more. Each tile asks one question in plain words, shows one number with its
    unit, and is green or red. There is no third colour to interpret. A tile reads the
    value now (an instant query) and aggregates it to one series, so it can never split
    into several numbers.
@@ -106,7 +107,7 @@ dashboard follows three rules:
 | Admin password created once by `obs-init.sh`, read by Grafana from a file | It is not in `compose.yaml`, an env file or `docker inspect`. The file is 644 because Grafana reads it as its own user inside the container; its folder is 700, so nobody else on this machine can reach it. `make obs-password` copies it to the clipboard without printing it. |
 | Update checks, usage reporting, the news feed and Gravatar off | A local tool should not call out. |
 
-`make obs-check` shows that all twelve targets are up and each of the ten jobs reports
+`make obs-check` shows that all thirteen targets are up and each of the eleven jobs reports
 series; that Grafana is healthy, the admin password works and the home page is this
 dashboard; that an anonymous visitor reads every panel and cannot write; that every query
 of every panel, closed rows included, returns data from Prometheus, names its chain and
@@ -149,6 +150,7 @@ means and what to do is in [docs/runbooks.md](../runbooks.md).
 | WithdrawalPayerStale | Payer is running | No step for a minute |
 | WithdrawalsWaiting | Withdrawals are paid | A withdrawal waits 10 minutes or more with nothing on chain |
 | PayerFundsLow | Payer has gas | The payer's key holds under 0.01 ETH on the L2 |
+| SignerRefused | Signer refuses nothing | At once: the signer refused a transaction in the last 10 minutes |
 | SuspenseUnresolved | Suspense explained | At once: a payment has waited in suspense a day or more; a ticket, not a page |
 | TargetDown | none | A client does not answer the scrape |
 

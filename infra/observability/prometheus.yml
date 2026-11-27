@@ -75,3 +75,10 @@ scrape_configs:
     static_configs:
       - targets: [withdrawal-payer:9111]
         labels: {chain: l2, role: bridge}
+
+  # The withdrawal signer of the bridge service (cmd/withdrawal-signer), on its metrics
+  # port; its signing API is not scraped.
+  - job_name: withdrawal-signer
+    static_configs:
+      - targets: [withdrawal-signer:9112]
+        labels: {chain: l2, role: bridge}

@@ -108,6 +108,8 @@ last error ever changes.
 | W11 Any version | The first version mined after a replacement was recorded closes the slot; nothing is paid or signed again. | `TestPayer_theFirstVersionMinedAfterAReplacementClosesTheSlot` |
 | W12 Outbox | The database refuses a version without fees, a second first version of a slot, a replacement less than a tenth higher, of another call or nonce, a second replacement of one version, and reopening a closed one. | `TestOutbox_theDatabaseRefusesWhatIsNotAReplacement` |
 | W13 Closed after settlement | A withdrawal the indexer settled before the payer looked again still has its transactions closed once final, and nothing is signed for it. | `TestPayer_closesTheTransactionsOfASettledWithdrawal`, `make check-bridge` |
+| W14 Signer refusals | A refusal of the signer is waited out: nothing recorded, no nonce taken, the reason kept; a refused replacement leaves the transaction as it was. | `TestPayer_aSignersRefusalIsWaitedOutAndTakesNoNonce`, `TestPayer_aRefusedReplacementKeepsTheTransaction` |
+| W15 The signer's answer | A transaction other than the one asked for is not recorded or sent. | `TestPayer_aTransactionOtherThanTheOneAskedForIsNotRecorded` |
 
 The tests run against a real PostgreSQL and a fake node that keeps a mempool, mines in
 nonce order, leaves unmined what tips below its minimum, replaces a transaction only
@@ -128,18 +130,23 @@ ledger equals the vault on chain.
 ## The service
 
 [cmd/withdrawal-payer](../../cmd/withdrawal-payer/main.go) runs the steps every two
-seconds, reads the vault from the deployment record at each, and signs with a key read
-from a file. It serves Prometheus metrics: what each step signed, sent again, replaced,
-left at the fee cap, rejected, reopened and closed; the withdrawals open and how long
+seconds and reads the vault from the deployment record at each. It holds no key: every
+transaction is signed by the withdrawal signer ([signer](signer.md)), reached over TLS
+with the payer's client certificate, under the signer's policy and against the ledger.
+The payer checks that what comes back is what it asked for, signed for the operator's
+account; a refusal is waited out, its reason recorded, no nonce taken. It serves
+Prometheus metrics: what each step signed, sent again, replaced, left at the fee cap,
+had refused by the signer, rejected, reopened and closed; the withdrawals open and how long
 the oldest with nothing on chain has waited; the transactions open; what its key holds
 for gas. Its image ([Dockerfile](../../infra/images/withdrawal-payer/Dockerfile)) is
 built like the indexer's: pinned bases, no shell, an unprivileged user.
 
 On the devnet it runs in the bridge service ([compose.yaml](../../infra/bridge/compose.yaml))
-with a key of its own, which holds the vault's operator role and nothing else, granted
-through the timelock ([cmd/vault-payer](../../cmd/vault-payer/main.go)); the operator key
-`make vault-check` uses is another, so the two never share nonces. It sends to the
-sequencer and connects as a login that holds only `withdrawal_payer`. Three alerts watch
+next to the signer, which holds a key of the payer's own: it has the vault's operator
+role and nothing else, granted through the timelock
+([cmd/vault-payer](../../cmd/vault-payer/main.go)); the operator key `make vault-check`
+uses is another, so the two never share nonces. The payer sends to the sequencer and
+connects as a login that holds only `withdrawal_payer`. Three alerts watch
 it: WithdrawalPayerStale, WithdrawalsWaiting and PayerFundsLow
 ([runbooks](../runbooks.md#withdrawalpayerstale)). `make withdrawal-check`
 ([cmd/withdrawal-check](../../cmd/withdrawal-check/main.go)) sends one real withdrawal
@@ -187,6 +194,7 @@ transfer it made.
 | `withdrawal_requester` | Record a request and hold the balance (`ledger_writer`) |
 | `withdrawal_payer` | Move a withdrawal between requested, onchain and rejected; record and close its transactions; take nonces; release a rejected hold (`ledger_writer`) |
 | `deposit_indexer` | Settle or cancel a withdrawal once the chain has made it final; read what waits in suspense |
+| `withdrawal_signer` | Read the withdrawals it is asked to sign for; write its own record, `signer_log` ([signer](signer.md)) |
 | `suspense_operator` | Propose, approve or reject the resolution of a payment in suspense, through the functions only; one login per person |
 
 ## Known limits
@@ -194,4 +202,4 @@ transfer it made.
 | Limit | Why it is accepted here |
 |---|---|
 | A payment in suspense is resolved whole, to one account. | A payment that is part a customer's and part a loss is rare; resolving in parts is not built, and such a payment stays in suspense, visible and alerted on, until it is. |
-| The payer's key is a file, read by its container as a Docker secret. | It holds only the operator role, so at most the rate limit can leave at once, and large amounts wait in the queue for the guardian. In production the key stays in an HSM or a signing service (KMS, MPC) and the payer asks it to sign; `sign` and `replace` are the two places that would call it. |
+| The payer's key is a file, read by the signer's container only. | The signer signs only what the ledger holds within its limits, and the key holds only the operator role, so at most the rate limit leaves at once and large amounts wait in the queue for the guardian. A KMS or HSM is the other implementation of the signer's key ([signer](signer.md#known-limits)). |

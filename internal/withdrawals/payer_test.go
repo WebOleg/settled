@@ -268,7 +268,7 @@ func (f *fixture) payer(t *testing.T) *Payer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Payer{Chain: f.chain, Ledger: f.l, Vault: vault, Key: key, ResendAfter: time.Hour, MaxFeeCap: big.NewInt(100_000_000_000), Batch: 100}
+	return &Payer{Chain: f.chain, Ledger: f.l, Vault: vault, Signer: KeySigner{Key: key}, ResendAfter: time.Hour, MaxFeeCap: big.NewInt(100_000_000_000), Batch: 100}
 }
 
 // fund credits a customer as a final deposit would.
@@ -809,4 +809,92 @@ func TestPayer_closesTheTransactionsOfASettledWithdrawal(t *testing.T) {
 	}
 	f.balance(t, alice, 0, 4)
 	f.clean(t)
+}
+
+// refusing is a signer whose policy refuses what refuse says, and signs the rest.
+type refusing struct {
+	KeySigner
+	refuse func(*types.Transaction) bool
+	asked  int
+}
+
+func (r *refusing) Sign(ctx context.Context, tx *types.Transaction) (*types.Transaction, error) {
+	r.asked++
+	if r.refuse(tx) {
+		return nil, &Refused{Rule: "test", Reason: "not allowed"}
+	}
+	return r.KeySigner.Sign(ctx, tx)
+}
+
+// A signer's refusal is waited out: nothing is recorded, no nonce is taken, the reason
+// is kept, and once the signer signs again the withdrawal is paid, under the next nonce.
+func TestPayer_aSignersRefusalIsWaitedOutAndTakesNoNonce(t *testing.T) {
+	f := newFixture(t)
+	f.fund(t, alice, 5)
+	w := f.submit(t, "w-1", alice, 1)
+	p := f.payer(t)
+	s := &refusing{KeySigner: p.Signer.(KeySigner), refuse: func(*types.Transaction) bool { return true }}
+	p.Signer = s
+	if rep := f.step(t, p); rep.Refused != 1 || rep.Waiting != 1 || rep.Signed != 0 || f.txCount(t) != 0 {
+		t.Fatalf("refused: %+v, %d transactions; want it refused, waiting, nothing recorded", rep, f.txCount(t))
+	}
+	var lastErr string
+	if err := f.l.Pool().QueryRow(context.Background(), "SELECT coalesce(last_error, '') FROM withdrawals WHERE id = $1", w.ID.Bytes()).Scan(&lastErr); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(lastErr, "signer refused (test)") {
+		t.Fatalf("last error %q, want the signer's refusal", lastErr)
+	}
+	s.refuse = func(*types.Transaction) bool { return false }
+	if rep := f.step(t, p); rep.Signed != 1 {
+		t.Fatalf("signed again: %+v, want it signed", rep)
+	}
+	f.chain.mine()
+	f.step(t, p)
+	var nonce uint64
+	if err := f.l.Pool().QueryRow(context.Background(), "SELECT nonce FROM withdrawal_txs").Scan(&nonce); err != nil {
+		t.Fatal(err)
+	}
+	if f.chain.payments[w.ID] != 1 || nonce != 0 {
+		t.Fatalf("%d payments at nonce %d; want 1 at 0", f.chain.payments[w.ID], nonce)
+	}
+}
+
+// A replacement the signer refuses leaves the transaction as it is, sent again when due.
+func TestPayer_aRefusedReplacementKeepsTheTransaction(t *testing.T) {
+	f := newFixture(t)
+	f.fund(t, alice, 5)
+	f.submit(t, "w-1", alice, 1)
+	p := f.payer(t)
+	f.step(t, p)
+	f.chain.minTip = big.NewInt(5)
+	f.chain.mine()
+	p.Signer = &refusing{KeySigner: p.Signer.(KeySigner), refuse: func(*types.Transaction) bool { return true }}
+	p.BumpAfter, p.ResendAfter = time.Nanosecond, 0
+	if rep := f.step(t, p); rep.Refused != 1 || rep.Bumped != 0 || rep.Resent != 1 || f.txCount(t) != 1 {
+		t.Fatalf("a refused replacement: %+v, %d transactions; want it refused and the first sent again", rep, f.txCount(t))
+	}
+}
+
+// liar returns a transaction other than the one asked for: the payer refuses to record it.
+type liar struct{ KeySigner }
+
+func (l liar) Sign(ctx context.Context, tx *types.Transaction) (*types.Transaction, error) {
+	other := types.NewTx(&types.DynamicFeeTx{ChainID: tx.ChainId(), Nonce: tx.Nonce(), GasTipCap: tx.GasTipCap(), GasFeeCap: tx.GasFeeCap(),
+		Gas: tx.Gas(), To: tx.To(), Value: big.NewInt(1), Data: tx.Data()})
+	return l.KeySigner.Sign(ctx, other)
+}
+
+func TestPayer_aTransactionOtherThanTheOneAskedForIsNotRecorded(t *testing.T) {
+	f := newFixture(t)
+	f.fund(t, alice, 5)
+	f.submit(t, "w-1", alice, 1)
+	p := f.payer(t)
+	p.Signer = liar{p.Signer.(KeySigner)}
+	if _, err := p.Step(context.Background()); err == nil || !strings.Contains(err.Error(), "other than the one asked for") {
+		t.Fatalf("step: %v, want it refused", err)
+	}
+	if f.txCount(t) != 0 || len(f.chain.mempool) != 0 {
+		t.Fatalf("%d transactions recorded, %d sent; want none", f.txCount(t), len(f.chain.mempool))
+	}
 }

@@ -7,8 +7,9 @@
 //  3. the key is topped up with ETH for gas on the L2, from the devnet user;
 //  4. the payer holds the operator role and nothing else.
 //
-// With -secret-only it only makes the key and writes it where the payer's container
-// reads it (.devnet/bridge/payer-key.txt), with no chain needed. Run again, it changes
+// With -secret-only it only makes the key and writes it where the withdrawal signer's
+// container reads it (.devnet/bridge/signing-key.txt), with no chain needed; the payer
+// itself never holds it. Run again, it changes
 // nothing that is in place. No key is ever printed, only addresses.
 package main
 
@@ -42,10 +43,12 @@ const (
 	mnemonicEnv = "SETTLED_DEVNET_MNEMONIC"
 	// userIndex is the devnet user, who holds ETH on the L2 and pays the keys' gas.
 	userIndex = 2
-	// SecretFile is where the payer's container reads its key, as a Docker secret. The
-	// folder is readable by its owner only (scripts/bridge/bridge-init.sh); the file is
-	// readable by the container's own user, as the bridge's passwords are.
-	SecretFile = ".devnet/bridge/payer-key.txt"
+	// SecretFile is where the withdrawal signer's container reads the key, as a Docker
+	// secret. The folder is readable by its owner only (scripts/bridge/bridge-init.sh);
+	// the file is readable by the container's own user, as the bridge's passwords are.
+	SecretFile = ".devnet/bridge/signing-key.txt"
+	// formerSecretFile is where the payer's container read it before the signer held it.
+	formerSecretFile = ".devnet/bridge/payer-key.txt"
 )
 
 // gas is what the payer's key is topped up to: a few hundred withdrawals on the devnet.
@@ -54,7 +57,7 @@ var gas = new(big.Int).Div(funding.Ether(1), big.NewInt(20)) // 0.05 ETH
 func main() {
 	rpcURL := flag.String("rpc", "http://127.0.0.1:18545", "sequencer execution JSON-RPC on the L2")
 	outDir := flag.String("out", "contracts/out", "forge build output")
-	secretOnly := flag.Bool("secret-only", false, "only make the key and write it for the payer's container")
+	secretOnly := flag.Bool("secret-only", false, "only make the key and write it for the signer's container")
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -88,12 +91,18 @@ func run(ctx context.Context, rpcURL, outDir string, secretOnly bool) error {
 			return err
 		}
 		if written {
-			fmt.Printf("key              payer %s, written for its container\n", payer)
+			fmt.Printf("key              payer %s, written for the signer's container\n", payer)
 		} else {
-			fmt.Printf("key              payer %s, in place for its container\n", payer)
+			fmt.Printf("key              payer %s, in place for the signer's container\n", payer)
+		}
+		// No copy of the key stays where the payer could read it.
+		if err := os.Remove(formerSecretFile); err == nil {
+			fmt.Printf("key              removed the copy the payer read before the signer held the key\n")
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
 		}
 	} else {
-		fmt.Printf("key              payer %s; make bridge-up writes it for its container\n", payer)
+		fmt.Printf("key              payer %s; make bridge-up writes it for the signer's container\n", payer)
 	}
 	if secretOnly {
 		return nil
@@ -180,7 +189,7 @@ func run(ctx context.Context, rpcURL, outDir string, secretOnly bool) error {
 	return nil
 }
 
-// writeSecret writes the key for the payer's container, when it is not there already,
+// writeSecret writes the key for the signer's container, when it is not there already,
 // through a temporary file and a rename. It reports whether it wrote.
 func writeSecret(path string, key *ecdsa.PrivateKey) (bool, error) {
 	want := []byte(hex.EncodeToString(crypto.FromECDSA(key)) + "\n")
@@ -197,13 +206,13 @@ func writeSecret(path string, key *ecdsa.PrivateKey) (bool, error) {
 	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, want, 0o644); err != nil {
-		return false, fmt.Errorf("write the payer's key for its container: %w", err)
+		return false, fmt.Errorf("write the key for the signer's container: %w", err)
 	}
 	if err := os.Chmod(tmp, 0o644); err != nil {
 		return false, err
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		return false, fmt.Errorf("write the payer's key for its container: %w", err)
+		return false, fmt.Errorf("write the key for the signer's container: %w", err)
 	}
 	return true, nil
 }

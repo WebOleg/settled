@@ -29,7 +29,7 @@ events once the block is finalized, and send withdrawals with ids from the ledge
 | Admin | A `TimelockController`; every change waits its delay and is visible before it applies | Unpause; configure tokens and the queue delay; skim; grant and revoke roles; upgrade the implementation. Handing the admin role over takes two steps and a delay of its own (`AccessControlDefaultAdminRules`). |
 | Timelock proposer | A key for admin changes | Schedule a change on the timelock and execute it after the delay. It cannot cancel. |
 | Timelock canceller | A key kept apart from the proposer | Cancel a scheduled change before it applies. It cannot propose or execute. |
-| Operator | Hot keys: the withdrawal payer's own ([withdrawals](withdrawals.md#the-service)), and on the devnet a second for `make vault-check` | Pay withdrawals; pay queued withdrawals after their delay. Nothing else. |
+| Operator | Hot keys: the withdrawal payer's own, held by the withdrawal signer, which signs only what the ledger holds ([signer](signer.md)), and on the devnet a second for `make vault-check` | Pay withdrawals; pay queued withdrawals after their delay. Nothing else. |
 | Guardian | A key kept apart from the service, for incidents | Pause; cancel queued withdrawals. It cannot unpause, move funds or change anything. |
 | Anyone | Users | Deposit. |
 

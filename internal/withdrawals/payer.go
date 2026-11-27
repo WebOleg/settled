@@ -27,14 +27,45 @@ var permanent = map[string]bool{
 	"ZeroAmount":           true,
 }
 
-// Payer pays the open withdrawals of one vault with the operator's key. Several payers
-// may run at once with the same key: each withdrawal is worked on by one at a time
-// (row locks, skipped when taken) and nonces come from one row in the database.
+// Signer signs the payer's transactions; the payer never holds the key itself. The
+// withdrawal signer (internal/signer) signs only what its policy and the ledger allow,
+// and refuses the rest with a *Refused.
+type Signer interface {
+	// Address is the account it signs for: the one that holds the vault's operator role.
+	Address() common.Address
+	// Sign returns tx signed, or a *Refused when its policy does not allow it.
+	Sign(ctx context.Context, tx *types.Transaction) (*types.Transaction, error)
+}
+
+// Refused is a signer's refusal: the rule of its policy that the transaction breaks,
+// and why. The payer signs nothing for it, takes no nonce, and records the reason.
+type Refused struct {
+	Rule, Reason string
+}
+
+func (r *Refused) Error() string { return fmt.Sprintf("signer refused (%s): %s", r.Rule, r.Reason) }
+
+// KeySigner signs with a key held in this process, with no policy of its own: for tests
+// and the end-to-end runs, where the payer's rules are what is under test.
+type KeySigner struct {
+	Key *ecdsa.PrivateKey
+}
+
+func (k KeySigner) Address() common.Address { return crypto.PubkeyToAddress(k.Key.PublicKey) }
+
+func (k KeySigner) Sign(_ context.Context, tx *types.Transaction) (*types.Transaction, error) {
+	return types.SignTx(tx, types.LatestSignerForChainID(tx.ChainId()), k.Key)
+}
+
+// Payer pays the open withdrawals of one vault through a signer that holds the
+// operator's key. Several payers may run at once for the same key: each withdrawal is
+// worked on by one at a time (row locks, skipped when taken) and nonces come from one
+// row in the database.
 type Payer struct {
 	Chain  Chain
 	Ledger *ledger.Ledger
 	Vault  common.Address
-	Key    *ecdsa.PrivateKey
+	Signer Signer
 	// ResendAfter is how long a sent transaction may go unmined before it is sent again,
 	// the same bytes.
 	ResendAfter time.Duration
@@ -55,14 +86,15 @@ type Payer struct {
 type Report struct {
 	Signed, Resent, OnChain, Rejected, Reopened, Waiting int
 	// Bumped are replacements signed; Capped are transactions left as they are because
-	// a replacement would offer more than MaxFeeCap.
-	Bumped, Capped int
+	// a replacement would offer more than MaxFeeCap; Refused are transactions the signer
+	// would not sign.
+	Bumped, Capped, Refused int
 	// Closed are transactions closed: a version final, or the nonce used by a final
 	// block.
 	Closed int
 }
 
-func (p *Payer) sender() common.Address { return crypto.PubkeyToAddress(p.Key.PublicKey) }
+func (p *Payer) sender() common.Address { return p.Signer.Address() }
 
 // Step works once on every open withdrawal: it brings the vault to each, signing a
 // transaction only where the vault has nothing for the id yet.
@@ -262,18 +294,26 @@ func (p *Payer) work(ctx context.Context, id common.Hash, rep *Report) error {
 					continue
 				}
 				if p.BumpAfter > 0 && o.age >= p.BumpAfter {
-					t, capped, err := p.replace(ctx, tx, id, o)
-					if err != nil {
+					// Not replaced, at the fee cap or refused by the signer: the reason is
+					// recorded, and the latest version is sent again when due.
+					t, why, err := p.replace(ctx, tx, id, o)
+					switch {
+					case errors.Is(err, errRefused):
+						rep.Refused++
+						if err := setStatus(status, why); err != nil {
+							return true, err
+						}
+					case err != nil:
 						return true, err
-					}
-					if t != nil {
+					case t != nil:
 						toSend = append(toSend, t)
 						rep.Bumped++
 						return true, nil
-					}
-					rep.Capped++
-					if err := setStatus(status, capped); err != nil {
-						return true, err
+					default:
+						rep.Capped++
+						if err := setStatus(status, why); err != nil {
+							return true, err
+						}
 					}
 				}
 				if o.sinceSent == nil || *o.sinceSent >= p.ResendAfter {
@@ -323,6 +363,11 @@ func (p *Payer) work(ctx context.Context, id common.Hash, rep *Report) error {
 				return err
 			}
 			t, lastErr, err := p.sign(ctx, tx, id, "execute", data)
+			if errors.Is(err, errRefused) {
+				rep.Refused++
+				rep.Waiting++
+				return setStatus("onchain", lastErr)
+			}
 			var rv *Revert
 			if errors.As(err, &rv) {
 				// The vault will not pay it, a recipient that refuses ETH say: it waits in
@@ -358,6 +403,11 @@ func (p *Payer) work(ctx context.Context, id common.Hash, rep *Report) error {
 			return err
 		}
 		t, lastErr, err := p.sign(ctx, tx, id, "withdraw", data)
+		if errors.Is(err, errRefused) {
+			rep.Refused++
+			rep.Waiting++
+			return setStatus("requested", lastErr)
+		}
 		var rv *Revert
 		if errors.As(err, &rv) && permanent[rv.Name] {
 			rep.Rejected++
@@ -400,6 +450,22 @@ func (p *Payer) send(ctx context.Context, toSend []*types.Transaction) error {
 		if _, err := p.Ledger.Pool().Exec(ctx, "UPDATE withdrawal_txs SET last_sent_at = now() WHERE hash = $1", t.Hash().Bytes()); err != nil {
 			return fmt.Errorf("withdrawals: note send of %s: %w", t.Hash(), err)
 		}
+	}
+	return nil
+}
+
+// errRefused marks a refusal of the signer, whose reason comes with it.
+var errRefused = errors.New("withdrawals: refused by the signer")
+
+// signed checks that what the signer returned is what was asked for, signed by the
+// payer's account: the same chain, nonce, fees, gas, destination, value and data.
+func (p *Payer) signed(asked, got *types.Transaction) error {
+	from, err := types.Sender(types.LatestSignerForChainID(asked.ChainId()), got)
+	if err != nil || from != p.sender() || got.Type() != asked.Type() || got.ChainId().Cmp(asked.ChainId()) != 0 ||
+		got.Nonce() != asked.Nonce() || got.GasTipCap().Cmp(asked.GasTipCap()) != 0 || got.GasFeeCap().Cmp(asked.GasFeeCap()) != 0 ||
+		got.Gas() != asked.Gas() || got.To() == nil || *got.To() != *asked.To() || got.Value().Cmp(asked.Value()) != 0 ||
+		string(got.Data()) != string(asked.Data()) || len(got.AccessList()) != 0 {
+		return fmt.Errorf("withdrawals: the signer returned a transaction other than the one asked for")
 	}
 	return nil
 }
@@ -495,12 +561,20 @@ func (p *Payer) replace(ctx context.Context, tx pgx.Tx, id common.Hash, o open) 
 	if err != nil {
 		return nil, "", err
 	}
-	t, err := types.SignNewTx(p.Key, types.LatestSignerForChainID(chainID), &types.DynamicFeeTx{
+	asked := types.NewTx(&types.DynamicFeeTx{
 		ChainID: chainID, Nonce: old.Nonce(), GasTipCap: newTip, GasFeeCap: newCap,
 		Gas: old.Gas(), To: old.To(), Data: old.Data(),
 	})
+	t, err := p.Signer.Sign(ctx, asked)
+	var refused *Refused
+	if errors.As(err, &refused) {
+		return nil, refused.Error(), errRefused
+	}
 	if err != nil {
 		return nil, "", fmt.Errorf("withdrawals: sign a replacement: %w", err)
+	}
+	if err := p.signed(asked, t); err != nil {
+		return nil, "", err
 	}
 	raw, err := t.MarshalBinary()
 	if err != nil {
@@ -555,12 +629,21 @@ func (p *Payer) sign(ctx context.Context, tx pgx.Tx, id common.Hash, kind string
 	if err != nil {
 		return nil, "", err
 	}
-	t, err := types.SignNewTx(p.Key, types.LatestSignerForChainID(chainID), &types.DynamicFeeTx{
+	asked := types.NewTx(&types.DynamicFeeTx{
 		ChainID: chainID, Nonce: next, GasTipCap: tip, GasFeeCap: feeCap,
 		Gas: gas + gas/5, To: &p.Vault, Data: data,
 	})
+	t, err := p.Signer.Sign(ctx, asked)
+	var refused *Refused
+	if errors.As(err, &refused) {
+		// Nothing is recorded and the nonce is not taken: the next step asks again.
+		return nil, refused.Error(), errRefused
+	}
 	if err != nil {
 		return nil, "", fmt.Errorf("withdrawals: sign: %w", err)
+	}
+	if err := p.signed(asked, t); err != nil {
+		return nil, "", err
 	}
 	raw, err := t.MarshalBinary()
 	if err != nil {

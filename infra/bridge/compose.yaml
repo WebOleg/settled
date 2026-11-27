@@ -1,5 +1,6 @@
 # The bridge service of the devnet: the ledger's PostgreSQL, the deposit indexer
-# (docs/design/deposits.md) and the withdrawal payer (docs/design/withdrawals.md).
+# (docs/design/deposits.md), the withdrawal payer (docs/design/withdrawals.md) and the
+# withdrawal signer that holds the payer's key (docs/design/signer.md).
 # PostgreSQL is published on 127.0.0.1 only, for ledger-migrate and the checks; the
 # services' metrics ports are not published.
 # Passwords are read from files in .devnet/bridge that bridge-init.sh writes once; they
@@ -66,8 +67,8 @@ services:
 
   # Pays the ledger's withdrawals from the vault (cmd/withdrawal-payer): sends to the
   # sequencer, finds the vault in the deployment record, mounted read-only without the
-  # keys, signs with a key of its own that holds only the vault's operator role
-  # (cmd/vault-payer), and connects as a login that holds only withdrawal_payer.
+  # keys, and connects as a login that holds only withdrawal_payer. It holds no key: the
+  # signer signs for it, reached over TLS with its client certificate.
   withdrawal-payer:
     build:
       context: ../..
@@ -81,14 +82,47 @@ services:
       - l2
     secrets:
       - payer_db
-      - payer_key
+      - {source: tls_ca, target: ca.pem}
+      - {source: payer_cert, target: payer.pem}
+      - {source: payer_tls_key, target: payer-key.pem}
     command:
       - -rpc=http://op-reth:8545
       - -record=/vault/deployment.json
       - -db=postgres://payer@postgres:5432/ledger?sslmode=disable
       - -db-password-file=/run/secrets/payer_db
-      - -key-file=/run/secrets/payer_key
+      - -signer=https://withdrawal-signer:9443
+      - -tls=/run/secrets
       - -listen=:9111
+    volumes:
+      - ../../.devnet/vault/record:/vault:ro
+
+  # Holds the payer's key, which has the vault's operator role and nothing else
+  # (cmd/vault-payer), and signs for the payer only what its policy and the ledger allow
+  # (cmd/withdrawal-signer), recording each decision in the ledger. It reaches no node
+  # and is on the bridge's network only; its API needs a client certificate from its CA.
+  # It connects as a login that holds only withdrawal_signer.
+  withdrawal-signer:
+    build:
+      context: ../..
+      dockerfile: infra/images/withdrawal-signer/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    secrets:
+      - signer_db
+      - signing_key
+      - {source: tls_ca, target: ca.pem}
+      - {source: signer_cert, target: signer.pem}
+      - {source: signer_tls_key, target: signer-key.pem}
+    command:
+      - -record=/vault/deployment.json
+      - -db=postgres://signer@postgres:5432/ledger?sslmode=disable
+      - -db-password-file=/run/secrets/signer_db
+      - -key-file=/run/secrets/signing_key
+      - -tls=/run/secrets
+      - -listen=:9443
+      - -metrics=:9112
     volumes:
       - ../../.devnet/vault/record:/vault:ro
 
@@ -99,5 +133,17 @@ secrets:
     file: ../../.devnet/bridge/indexer.txt
   payer_db:
     file: ../../.devnet/bridge/payer.txt
-  payer_key:
-    file: ../../.devnet/bridge/payer-key.txt
+  signer_db:
+    file: ../../.devnet/bridge/signer.txt
+  signing_key:
+    file: ../../.devnet/bridge/signing-key.txt
+  tls_ca:
+    file: ../../.devnet/bridge/tls/ca.pem
+  payer_cert:
+    file: ../../.devnet/bridge/tls/payer.pem
+  payer_tls_key:
+    file: ../../.devnet/bridge/tls/payer-key.pem
+  signer_cert:
+    file: ../../.devnet/bridge/tls/signer.pem
+  signer_tls_key:
+    file: ../../.devnet/bridge/tls/signer-key.pem
