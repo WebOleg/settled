@@ -1,12 +1,15 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load l2-logs l2-down l2-reset
+.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load l2-logs l2-down l2-reset
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
 OBS := docker compose -f infra/observability/compose.yaml
 PROM_IMAGE := prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
+# Foundry v1.9.0: the arm64 image of v1.10.0 ships forge, cast and chisel as 434 KB
+# stubs that print nothing and exit 0 (contracts/README.md).
+FOUNDRY_IMAGE := ghcr.io/foundry-rs/foundry:v1.9.0@sha256:3a392c18f9b16e665e932de159fb6fa9ed972c4b4352f2f76a1a8c7ca9b57d39
 AM_IMAGE := prom/alertmanager:v0.35.1@sha256:4e3d029e69c7f61dd53a2b31a3dc427a2b81736cffca185c0854075e07969e36
 STEP := $(MAKE) --no-print-directory
 
@@ -43,7 +46,7 @@ reset: ## Stop everything and delete chain data, metrics and the deployment; rol
 	@scripts/devnet/l2-deploy.sh --reset
 	@scripts/devnet/l1-init.sh --reset
 
-check: check-docs check-images check-shell check-secrets check-go ## Run every local check
+check: check-docs check-images check-shell check-secrets check-go check-contracts ## Run every local check
 
 check-docs: ## Formatting and documentation rules on every tracked file
 	@scripts/check-docs.sh
@@ -58,6 +61,9 @@ check-shell: ## shellcheck on every tracked shell script
 
 check-secrets: ## gitleaks on the full git history, findings redacted
 	@gitleaks git --redact --no-banner --log-level warn . && echo "check-secrets: ok"
+
+check-contracts: ## forge fmt, build without warnings and tests, in the pinned Foundry image
+	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/contracts/check.sh
 
 check-go: ## gofmt, go vet and go test on every Go package
 	@files="$$(gofmt -l cmd internal)"; \

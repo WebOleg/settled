@@ -70,9 +70,10 @@ targets.
 | `check-shell` | shellcheck | any finding in a tracked shell script |
 | `check-secrets` | gitleaks | a secret anywhere in the git history; findings are printed redacted |
 | `check-go` | gofmt, go vet, go test | an unformatted file, a vet finding or a failing test |
+| `check-contracts` | [scripts/contracts/check.sh](scripts/contracts/check.sh), forge in the pinned Foundry image | an unformatted contract, a compiler warning, a source file that built no artifact, or a failing test |
 
-The checks run with gitleaks 8.30.1, shellcheck 0.11.0 and Go 1.26.2, locally and in
-CI. CI installs shellcheck and gitleaks with
+The checks run with gitleaks 8.30.1, shellcheck 0.11.0, Go 1.26.2 and Foundry v1.9.0,
+locally and in CI. CI installs shellcheck and gitleaks with
 [scripts/ci/install-tools.sh](scripts/ci/install-tools.sh), which checks each release
 archive against its sha256 first, and pins every GitHub action by commit SHA. A tool is
 upgraded in both places in one commit.
@@ -104,3 +105,18 @@ upgraded in both places in one commit.
 - Secrets reach a program through the environment or a file at run time and are never
   printed. The devnet mnemonic is public, and is still handled this way so the code
   path is the same one real keys will take.
+
+## Solidity
+
+- Every file uses the exact compiler version (`pragma solidity 0.8.39;`), the latest
+  with no known bug. A version change is one commit with the reason.
+- The specification comes first, in `docs/design`, with numbered invariants; the
+  interface and NatSpec follow it, then the code.
+- Libraries are OpenZeppelin, pinned by commit. No copied library code.
+- Custom errors carrying the values that caused them; no revert strings.
+- State changes before external calls; every function that moves value is guarded
+  against reentrancy.
+- Every rule has a unit test; every invariant has a fuzz or invariant test named after
+  it. Tests run in `make check`.
+- Upgradeable contracts keep their state in one ERC-7201 namespace, and the storage
+  layout is checked against the one in the repository.
