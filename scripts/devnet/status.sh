@@ -14,6 +14,7 @@ SEQ_NODE="http://127.0.0.1:19545"
 VER_NODE="http://127.0.0.1:29545"
 L1="docker compose -f infra/devnet/l1/compose.yaml"
 L2="docker compose -f infra/devnet/l2/compose.yaml"
+BRIDGE="docker compose -f infra/bridge/compose.yaml"
 
 problems=0
 call() {
@@ -24,12 +25,12 @@ num() { if [ -n "$1" ] && [ "$1" != "null" ]; then printf '%d' "$1"; else echo "
 
 echo "Services"
 for pair in "l1:geth" "l1:beacon" "l1:validator" "l2:op-reth" "l2:op-node" "l2:op-batcher" \
-  "l2:verifier-op-reth" "l2:verifier-op-node" "l2:op-proposer"; do
+  "l2:verifier-op-reth" "l2:verifier-op-node" "l2:op-proposer" "bridge:postgres" "bridge:deposit-indexer"; do
   layer="${pair%%:*}"; svc="${pair#*:}"
-  if [ "$layer" = "l1" ]; then compose="$L1"; else compose="$L2"; fi
+  case "$layer" in l1) compose="$L1" ;; l2) compose="$L2" ;; *) compose="$BRIDGE" ;; esac
   state="$($compose ps -a --format '{{.State}}' "$svc" 2>/dev/null | head -1)"
   [ -n "$state" ] || state="not created"
-  printf '  %-4s %-20s %s\n' "$layer" "$svc" "$state"
+  printf '  %-6s %-20s %s\n' "$layer" "$svc" "$state"
   [ "$state" = "running" ] || problems=$((problems + 1))
 done
 

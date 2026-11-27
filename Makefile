@@ -1,13 +1,12 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts check-bridge contracts-snapshot contracts-slither-record l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-upgrade vault-timelock-move vault-check vault-reset l2-logs l2-down l2-reset
+.PHONY: help up down status reset obs-up obs-check obs-down obs-password alert-drill check check-docs check-images check-shell check-secrets check-go check-contracts check-bridge contracts-snapshot contracts-slither-record l1-up l1-down l1-logs l1-check l1-blob-check l2-keys l2-fund l2-deploy l2-verify l2-up l2-check l2-games l2-deposit l2-withdraw l2-load vault-deploy vault-verify vault-upgrade vault-timelock-move vault-check vault-reset bridge-up bridge-check bridge-logs bridge-down bridge-reset l2-logs l2-down l2-reset
 
 L1 := docker compose -f infra/devnet/l1/compose.yaml
 L2 := docker compose -f infra/devnet/l2/compose.yaml
 OBS := docker compose -f infra/observability/compose.yaml
-# PostgreSQL 18.7, the ledger's database (docs/design/ledger.md).
-POSTGRES_IMAGE := postgres:18.7-alpine@sha256:0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71
+BRIDGE := docker compose -f infra/bridge/compose.yaml
 PROM_IMAGE := prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
 # Foundry v1.10.1: the arm64 image of v1.10.0 shipped forge, cast and chisel as 434 KB
 # stubs, and the lint of v1.9.0 counted every assembly block as an external call
@@ -28,25 +27,29 @@ up: ## Start the whole devnet from any state, in order, and check each part
 	@$(STEP) l2-verify
 	@$(STEP) l2-up
 	@$(STEP) l2-check
+	@$(STEP) bridge-up
 	@$(STEP) obs-up
 	@$(STEP) obs-check
 	@echo "up: ok"
 
-down: ## Stop observability, the L2, then the L1; keep all data
+down: ## Stop observability, the bridge, the L2, then the L1; keep all data
 	@$(OBS) down
+	@$(BRIDGE) down
 	@$(L2) down
 	@$(L1) down
 
 status: ## One look at services, heads and operator balances, without waiting
 	@scripts/devnet/status.sh
 
-reset: ## Stop everything and delete chain data, metrics and the deployment; role keys are kept
+reset: ## Stop everything and delete chain data, metrics, the ledger and the deployment; role keys are kept
 	@$(OBS) down --volumes
+	@$(BRIDGE) down --volumes
 	@$(L2) down
 	@$(L1) down
 	@scripts/devnet/l2-init.sh --reset
 	@scripts/contracts/vault-deploy.sh --reset
 	@scripts/observability/obs-init.sh --reset
+	@scripts/bridge/bridge-init.sh --reset
 	@scripts/devnet/l2-deploy.sh --reset
 	@scripts/devnet/l1-init.sh --reset
 
@@ -80,10 +83,10 @@ contracts-slither-record: ## Record Slither's findings in contracts/slither.db.j
 	@scripts/contracts/slither.sh --record
 
 check-go: ## gofmt, go vet and go test on every Go package; the ledger's tests against a throwaway PostgreSQL
-	@POSTGRES_IMAGE=$(POSTGRES_IMAGE) scripts/check-go.sh
+	@scripts/check-go.sh
 
 check-bridge: ## The deposit indexer end to end on anvil: held, credited at finality, voided by a reorg, credited once
-	@POSTGRES_IMAGE=$(POSTGRES_IMAGE) FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/check-bridge.sh
+	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/check-bridge.sh
 
 l1-up: ## Start the local L1; creates its genesis on first run
 	@scripts/devnet/l1-init.sh
@@ -100,6 +103,7 @@ l1-logs: ## Follow the logs of the local L1
 
 l1-down: ## Stop the local L1 and keep its data; stops what uses its network first
 	@$(OBS) down
+	@$(BRIDGE) down
 	@$(L2) down
 	@$(L1) down
 
@@ -137,12 +141,14 @@ l2-load: ## Send 50 transfers a second to the L2 for 2 minutes; measure inclusio
 l2-logs: ## Follow the logs of the L2 services
 	@$(L2) logs --follow --tail 50
 
-l2-down: ## Stop the L2 services and keep their data; stops observability first
+l2-down: ## Stop the L2 services and keep their data; stops observability and the bridge first
 	@$(OBS) down
+	@$(BRIDGE) down
 	@$(L2) down
 
-l2-reset: ## Stop the L2 services and delete the chain data and the vault record (keys and L1 deployment kept)
+l2-reset: ## Stop the L2 services and delete the chain data, the vault record and the ledger (keys and L1 deployment kept)
 	@$(OBS) down
+	@$(BRIDGE) down --volumes
 	@$(L2) down
 	@scripts/devnet/l2-init.sh --reset
 	@scripts/contracts/vault-deploy.sh --reset
@@ -166,6 +172,29 @@ vault-check: ## Run the vault's rules on the L2 with real transactions and accou
 
 vault-reset: ## Forget the vault deployment and keep its keys, for a new L2
 	@scripts/contracts/vault-deploy.sh --reset
+
+bridge-up: ## Start the ledger's PostgreSQL, migrate it, and start the deposit indexer; needs l2-up
+	@scripts/bridge/bridge-init.sh
+	@$(BRIDGE) up -d --quiet-pull --wait postgres
+	@go run ./cmd/ledger-migrate -db 'postgres://admin@127.0.0.1:15432/ledger?sslmode=disable' \
+		-db-password-file .devnet/bridge/postgres-admin.txt \
+		-login indexer:deposit_indexer:.devnet/bridge/indexer.txt -login auditor:ledger_reader:.devnet/bridge/auditor.txt
+	@$(BRIDGE) up -d --quiet-pull --build --remove-orphans deposit-indexer
+	@echo "bridge-up: ok"
+
+bridge-check: ## Reconcile the ledger with the chain, read independently: every final deposit posted, to the wei
+	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/contracts/build.sh
+	@go run ./cmd/bridge-check
+
+bridge-logs: ## Follow the logs of the deposit indexer and the ledger's PostgreSQL
+	@$(BRIDGE) logs -f --tail 50
+
+bridge-down: ## Stop the deposit indexer and the ledger's PostgreSQL; keep the ledger
+	@$(BRIDGE) down
+
+bridge-reset: ## Stop the bridge and delete the ledger; its passwords are made again at the next bridge-up
+	@$(BRIDGE) down --volumes
+	@scripts/bridge/bridge-init.sh --reset
 
 obs-up: ## Start Prometheus, Alertmanager, Grafana and the vault exporter; needs l1-up and l2-up
 	@scripts/observability/obs-init.sh

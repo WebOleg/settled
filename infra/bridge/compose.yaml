@@ -1,0 +1,70 @@
+# The bridge service of the devnet: the ledger's PostgreSQL and the deposit indexer
+# (docs/design/deposits.md). PostgreSQL is published on 127.0.0.1 only, for
+# ledger-migrate and bridge-check; the indexer's metrics port is not published.
+# Passwords are read from files in .devnet/bridge that bridge-init.sh writes once; they
+# are not in this file, an env file or docker inspect. Images are pinned by digest,
+# the indexer's base images too. scripts/lib/postgres.sh takes the PostgreSQL image for
+# the checks from this file, so tests and devnet run the same one.
+name: settled-bridge
+
+networks:
+  default: {}
+  l2:
+    name: settled-l2_default
+    external: true
+
+volumes:
+  ledger: {}
+
+services:
+  postgres:
+    image: postgres:18.7-alpine@sha256:0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_DB: ledger
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin
+    secrets:
+      - postgres_admin
+    ports:
+      - 127.0.0.1:15432:5432
+    # PostgreSQL 18 images keep the data in a folder per major version under this path.
+    volumes:
+      - ledger:/var/lib/postgresql
+    healthcheck:
+      test: [CMD, pg_isready, -q, -h, 127.0.0.1, -U, admin, -d, ledger]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Keeps the ledger in step with the vault's deposits (cmd/deposit-indexer): reads the
+  # chain from the verifier node, finds the vault in the deployment record, mounted
+  # read-only without the keys, and connects as a login that holds only
+  # deposit_indexer.
+  deposit-indexer:
+    build:
+      context: ../..
+      dockerfile: infra/images/deposit-indexer/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+      - l2
+    secrets:
+      - indexer_db
+    command:
+      - -rpc=http://verifier-op-reth:8545
+      - -record=/vault/deployment.json
+      - -db=postgres://indexer@postgres:5432/ledger?sslmode=disable
+      - -db-password-file=/run/secrets/indexer_db
+      - -listen=:9110
+    volumes:
+      - ../../.devnet/vault/record:/vault:ro
+
+secrets:
+  postgres_admin:
+    file: ../../.devnet/bridge/postgres-admin.txt
+  indexer_db:
+    file: ../../.devnet/bridge/indexer.txt

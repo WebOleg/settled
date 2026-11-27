@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # gofmt, go vet and go test on every Go package. The ledger's tests need PostgreSQL: a
-# throwaway server in the pinned image (POSTGRES_IMAGE, from the Makefile), removed
-# when the tests end (scripts/lib/postgres.sh).
+# throwaway server in the devnet's pinned image, removed when the tests end
+# (scripts/lib/postgres.sh).
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"

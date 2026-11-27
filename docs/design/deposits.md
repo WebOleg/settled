@@ -96,6 +96,13 @@ from a file, never a flag. [cmd/ledger-migrate](../../cmd/ledger-migrate/main.go
 migrates the schema as its owner and makes each service's login, holding only the role
 it needs.
 
+On the devnet the indexer and its PostgreSQL run as the bridge service
+([infra/bridge](../../infra/bridge/README.md)), and `make bridge-check`
+([cmd/bridge-check](../../cmd/bridge-check/main.go)) reconciles the ledger with the
+chain from outside the indexer: it reads the vault's events itself, as a login that
+can only read, and compares them with the books up to the indexer's last final block,
+deposit by deposit and to the wei.
+
 ## Known limits
 
 | Limit | Why it is accepted here |

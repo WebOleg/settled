@@ -1,8 +1,12 @@
-# The only image built with the repository root as its context is the vault exporter's
-# (infra/images/vault-exporter): its sources go in, nothing else. Chain data and keys
-# in .devnet, contract builds and libraries never reach a build.
+# The images built with the repository root as their context are the vault exporter's
+# (infra/images/vault-exporter) and the deposit indexer's (infra/images/deposit-indexer):
+# their sources go in, nothing else. Chain data, keys and passwords in .devnet, contract
+# builds and libraries never reach a build.
 *
 !go.mod
 !go.sum
 !cmd/vault-exporter
+!cmd/deposit-indexer
 !internal/vaultwatch
+!internal/ledger
+!internal/deposits
