@@ -14,7 +14,7 @@ accounts can pay for all of it. Each later alert reads a metric collected here.
 ## Metrics
 
 Every client exposes Prometheus metrics inside its Docker network. Prometheus joins the
-L1 and L2 networks and scrapes all nine every 5 seconds.
+L1 and L2 networks and scrapes all nine every 5 seconds, and the vault exporter with them.
 
 | Client | Flags | Endpoint inside Docker |
 |---|---|---|
@@ -25,6 +25,17 @@ L1 and L2 networks and scrapes all nine every 5 seconds.
 | op-node, sequencer and verifier | `--metrics.enabled --metrics.port=7300` | `op-node:7300`, `verifier-op-node:7300` |
 | op-batcher | `--metrics.enabled --metrics.port=7300` | `op-batcher:7300` |
 | op-proposer | `--metrics.enabled --metrics.port=7300` | `op-proposer:7300` |
+| vault-exporter ([cmd/vault-exporter](../../cmd/vault-exporter/main.go)) | `-listen=:9100` | `vault-exporter:9100/metrics` |
+
+The vault exporter is built from this repository ([infra/images/vault-exporter](../../infra/images/vault-exporter/Dockerfile)).
+It reads the vault from the verifier node, which derives the chain from the L1, every 2
+seconds: whether it is paused, the ETH it holds and the ETH it accounts for (compared to
+the wei, `vault_solvent`), and the withdrawals waiting in its queue, rebuilt from the
+vault's events since its deployment block ([internal/vaultwatch](../../internal/vaultwatch/watch.go)).
+If the block it last read leaves the chain, it reads the events again from the start. It
+finds the vault in the deployment record, read at every poll from a folder mounted
+read-only, which holds no key. With no vault deployed it reports nothing to watch, so no
+alert fires.
 
 | Choice | Reason |
 |---|---|
@@ -47,7 +58,8 @@ A person on duty takes in a handful of things at a glance, not twenty graphs. Th
 version put sixteen panels on one screen, and it was hard to see where to look. So the
 dashboard follows three rules:
 
-1. One screen answers "is the chain healthy?" with six tiles. Each tile asks one
+1. One screen answers "is the chain healthy?" with six tiles, and "is the vault safe?"
+   with four more. Each tile asks one
    question in plain words, shows one number with its unit, and is green or red. There
    is no third colour to interpret. A tile reads the value now (an instant query) and
    aggregates it to one series, so it can never split into several numbers.
@@ -64,6 +76,10 @@ dashboard follows three rules:
 | Proposals are made | The proposer posted a state to the L1 less than 15 minutes ago; it does about every 6. | Older. |
 | L1 finalizes | The L1 finalized block is fewer than 160 blocks (5 epochs) behind its head; normally about 64 to 96. | Finality has stalled. |
 | Operators have funds | The batcher and the proposer each hold at least 1 ETH on the L1. | One of them is running out. |
+| Vault holds what it owes | The vault holds at least the ETH its deposits account for, to the wei. | It holds less. |
+| Vault queue is empty | No large withdrawal waits in the queue. | One does: check it against the ledger before its release block. |
+| Vault is open | Deposits and payments run. | The guardian has paused the vault. |
+| Vault is watched | The vault exporter read the chain in the last minute. | It did not; the vault tiles show an old reading. |
 
 | Closed row | Panels |
 |---|---|
@@ -72,6 +88,7 @@ dashboard follows three rules:
 | Details: batcher | Blocks waiting to be batched, Batch transactions and blob fee |
 | Details: proposer and funds | Age of the proposed state, Operator balances on the L1 |
 | Details: execution | Gas used per L2 block, Problems |
+| Details: vault | Vault ETH: held and owed, Vault queue |
 
 | Choice | Reason |
 |---|---|
@@ -80,7 +97,7 @@ dashboard follows three rules:
 | Admin password created once by `obs-init.sh`, read by Grafana from a file | It is not in `compose.yaml`, an env file or `docker inspect`. The file is 644 because Grafana reads it as its own user inside the container; its folder is 700, so nobody else on this machine can reach it. `make obs-password` copies it to the clipboard without printing it. |
 | Update checks, usage reporting, the news feed and Gravatar off | A local tool should not call out. |
 
-`make obs-check` shows that all nine targets are up and each of the seven jobs reports
+`make obs-check` shows that all ten targets are up and each of the eight jobs reports
 series; that Grafana is healthy, the admin password works and the home page is this
 dashboard; that an anonymous visitor reads every panel and cannot write; that every query
 of every panel, closed rows included, returns data from Prometheus, names its chain and
@@ -112,12 +129,17 @@ means and what to do is in [docs/runbooks.md](../runbooks.md).
 | ProposalsStalled | Proposals are made | No proposal for 15 minutes |
 | L1FinalityStalled | L1 finalizes | Finalized 160 or more blocks behind the head |
 | OperatorFundsLow | Operators have funds | Batcher or proposer under 1 ETH |
+| VaultInsolvent | Vault holds what it owes | At once: the vault holds less ETH than it owes |
+| VaultWithdrawalQueued | Vault queue is empty | At once: a withdrawal waits in the queue |
+| VaultPaused | Vault is open | At once: the vault is paused |
+| VaultWatchStale | Vault is watched | No reading of the chain for a minute |
 | TargetDown | none | A client does not answer the scrape |
 
 | Choice | Reason |
 |---|---|
 | One rule per tile, the same query and red line | What is red on screen is what pages, and the reverse. `make obs-check` reads both files and fails if a rule's query is not its tile's query compared with the tile's red line. |
 | Held for 1 minute | One slow scrape or a late batch does not page anyone; a real stall still does within a minute of the red line. |
+| The vault's alerts at once | They read the chain's state exactly, not a rate, so one reading is the truth. A queued withdrawal has only the queue delay (2 minutes on the devnet) to be checked and cancelled; holding it for a minute would spend half of it. `make vault-check` shows the queue and the pause alerts reach Alertmanager and clear. |
 | TargetDown | A stopped client takes its metrics with it, and a query over missing metrics returns nothing, not red. Only `up == 0` sees that. |
 | Every rule links a section of `docs/runbooks.md` | An alert without a known next step wakes someone up for nothing. `make obs-check` fails on a rule whose section is missing. |
 | One receiver that keeps the alerts, nobody paged | The devnet has no on-call. In production the same rules route `severity=page` to the on-call rotation; only `alertmanager.yml` changes. |

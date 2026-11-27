@@ -179,7 +179,8 @@ make obs-check
 
 Grafana at `http://127.0.0.1:3000` opens on six questions, each green or red: the L2
 makes blocks, batches reach the L1, the verifier keeps up, proposals are made, the L1
-finalizes, operators have funds. The details sit below, closed until needed. Each red
+finalizes, operators have funds; and four on the vault: it holds what it owes, its queue
+is empty, it is open, it is watched. The details sit below, closed until needed. Each red
 line is an alert rule in Prometheus (`http://127.0.0.1:9090`), sent to Alertmanager
 (`http://127.0.0.1:9093`), with a runbook in [docs/runbooks.md](docs/runbooks.md).
 

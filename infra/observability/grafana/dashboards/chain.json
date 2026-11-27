@@ -427,6 +427,283 @@
     },
     {
       "type": "row",
+      "id": 24,
+      "title": "Overview: is the vault safe?",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "id": 25,
+      "title": "Vault holds what it owes",
+      "description": "Green: the vault holds at least the ETH its deposits account for, compared to the wei. Red: it holds less. If red, see the runbook VaultInsolvent.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "min(vault_solvent{chain=\"l2\"})",
+          "legendFormat": "Vault holds what it owes",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: (1 = yes)",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 26,
+      "title": "Vault queue is empty",
+      "description": "Green: no large withdrawal waits in the queue. Red: one or more do, and each must be checked against the ledger before its release block. If red, see the runbook VaultWithdrawalQueued.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(vault_queued_withdrawals{chain=\"l2\"})",
+          "legendFormat": "Vault queue is empty",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: queued",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 27,
+      "title": "Vault is open",
+      "description": "Green: deposits and payments run. Red: the guardian has paused the vault. If red, see the runbook VaultPaused.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(vault_paused{chain=\"l2\"})",
+          "legendFormat": "Vault is open",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: (1 = paused)",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "id": 28,
+      "title": "Vault is watched",
+      "description": "Green: the vault exporter read the chain in the last minute. Red: it did not, and the other vault tiles show an old reading. If red, see the runbook VaultWatchStale.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - max(vault_watch_last_success_timestamp_seconds{chain=\"l2\"})",
+          "legendFormat": "Vault is watched",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 60
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "row",
       "id": 11,
       "title": "Details: L2",
       "collapsed": true,
@@ -434,7 +711,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 6
+        "y": 12
       },
       "panels": [
         {
@@ -450,7 +727,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 7
+            "y": 13
           },
           "targets": [
             {
@@ -502,7 +779,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 7
+            "y": 13
           },
           "targets": [
             {
@@ -565,7 +842,7 @@
             "h": 6,
             "w": 12,
             "x": 0,
-            "y": 15
+            "y": 21
           },
           "targets": [
             {
@@ -615,7 +892,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 7
+        "y": 13
       },
       "panels": [
         {
@@ -631,7 +908,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 7
+            "y": 13
           },
           "targets": [
             {
@@ -705,7 +982,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 7
+            "y": 13
           },
           "targets": [
             {
@@ -766,7 +1043,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 8
+        "y": 14
       },
       "panels": [
         {
@@ -782,7 +1059,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 7
+            "y": 13
           },
           "targets": [
             {
@@ -834,7 +1111,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 7
+            "y": 13
           },
           "targets": [
             {
@@ -894,7 +1171,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 9
+        "y": 15
       },
       "panels": [
         {
@@ -910,7 +1187,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 7
+            "y": 13
           },
           "targets": [
             {
@@ -962,7 +1239,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 7
+            "y": 13
           },
           "targets": [
             {
@@ -1023,7 +1300,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 10
+        "y": 16
       },
       "panels": [
         {
@@ -1039,7 +1316,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 7
+            "y": 13
           },
           "targets": [
             {
@@ -1091,7 +1368,7 @@
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 7
+            "y": 13
           },
           "targets": [
             {
@@ -1113,6 +1390,146 @@
               },
               "expr": "increase(reth_blockchain_tree_reorgs{chain=\"l2\"}[15m])",
               "legendFormat": "reorgs {{node}}",
+              "range": true,
+              "instant": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "id": 29,
+      "title": "Details: vault",
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "panels": [
+        {
+          "type": "timeseries",
+          "id": 30,
+          "title": "Vault ETH: held and owed",
+          "description": "What the vault holds and what its deposits account for, in ETH. Held is never below owed.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 18
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "vault_balance_wei{chain=\"l2\"} / 1e18",
+              "legendFormat": "held",
+              "range": true,
+              "instant": false
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "vault_accounted_wei{chain=\"l2\"} / 1e18",
+              "legendFormat": "owed",
+              "range": true,
+              "instant": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "spanNulls": true
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        },
+        {
+          "type": "timeseries",
+          "id": 31,
+          "title": "Vault queue",
+          "description": "Withdrawals waiting in the queue, and the ETH they hold.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 18
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "vault_queued_withdrawals{chain=\"l2\"}",
+              "legendFormat": "withdrawals queued",
+              "range": true,
+              "instant": false
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "vault_queued_wei{chain=\"l2\"} / 1e18",
+              "legendFormat": "ETH queued",
               "range": true,
               "instant": false
             }

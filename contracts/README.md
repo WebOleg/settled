@@ -12,7 +12,7 @@ about each finding in [docs/review/vault.md](../docs/review/vault.md).
 | `make vault-deploy` | Deploys the vault to the devnet L2 behind a timelock and a proxy, once per L2 ([docs/design/vault.md](../docs/design/vault.md#deployment)) |
 | `make vault-verify` | Checks the deployed vault against this repository: code byte for byte, roles, delays, configuration |
 | `make vault-upgrade` | Upgrades the vault to the code the repository builds, through the timelock; does nothing when it already runs that code |
-| `make vault-check` | Runs the rules on the devnet with real transactions from each role's key: deposit, payment at once, a refused duplicate, the queue, the pause and the unpause through the timelock, and every wei accounted for ([docs/design/vault.md](../docs/design/vault.md#the-rules-on-the-devnet)) |
+| `make vault-check` | Runs the rules on the devnet with real transactions from each role's key: deposit, payment at once, a refused duplicate, the queue, the pause and the unpause through the timelock, every wei accounted for, and the queue and pause alerts firing and clearing ([docs/design/vault.md](../docs/design/vault.md#the-rules-on-the-devnet)) |
 | `make vault-reset` | Forgets the deployment, keeps the keys, for a new L2 |
 | `make contracts-snapshot` | Records the gas of the unit tests in `.gas-snapshot`. A change in gas shows in review as a change to that file. |
 | `make contracts-slither-record` | Records Slither's findings in `slither.db.json`, after each new one is reviewed in docs/review/vault.md. A change shows in review as a change to that file. |

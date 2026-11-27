@@ -1,8 +1,8 @@
 # Observability for the devnet. Prometheus scrapes every client of the L1 and the L2
-# over their Docker networks and evaluates the alert rules; Alertmanager receives the
-# alerts; Grafana shows the dashboards in this repository. The metrics ports are not
-# published; Prometheus, Alertmanager and Grafana are, on 127.0.0.1 only. Images are
-# pinned by digest.
+# over their Docker networks, and the vault exporter, and evaluates the alert rules;
+# Alertmanager receives the alerts; Grafana shows the dashboards in this repository. The
+# metrics ports are not published; Prometheus, Alertmanager and Grafana are, on
+# 127.0.0.1 only. Images are pinned by digest, the exporter's base images too.
 name: settled-obs
 
 networks:
@@ -38,6 +38,25 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus:/prometheus
+
+  # Watches the vault on the L2 from the verifier node and serves what it sees as
+  # metrics (cmd/vault-exporter). Built from this repository. It reads the deployment
+  # record from its own folder, mounted read-only, so it never sees the vault's keys;
+  # the folder, not the file, is mounted, so a record replaced by a rename is seen.
+  vault-exporter:
+    build:
+      context: ../..
+      dockerfile: infra/images/vault-exporter/Dockerfile
+    restart: unless-stopped
+    networks:
+      - default
+      - l2
+    command:
+      - -rpc=http://verifier-op-reth:8545
+      - -record=/vault/deployment.json
+      - -listen=:9100
+    volumes:
+      - ../../.devnet/vault/record:/vault:ro
 
   alertmanager:
     image: prom/alertmanager:v0.35.1@sha256:4e3d029e69c7f61dd53a2b31a3dc427a2b81736cffca185c0854075e07969e36

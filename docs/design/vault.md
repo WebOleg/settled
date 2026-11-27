@@ -117,7 +117,7 @@ taken over directly.
 The four keys (deployer, operator, guardian, timelock proposer) are created once in
 `.devnet/vault/keys`, readable by the owner only, and the deployer holds no role when it
 is done. Addresses and the L2 they belong to are recorded in
-`.devnet/vault/deployment.json`; a second run on the same L2 changes nothing, and a
+`.devnet/vault/record/deployment.json`; a second run on the same L2 changes nothing, and a
 record for another L2 is refused.
 
 | Parameter | Devnet | Production |
@@ -182,6 +182,12 @@ step against the chain:
 6. The recipient holds exactly 6 ETH, and the vault's balance and `accounted` are back
    where they started, to the wei.
 
+Along the way the monitoring must see it: `VaultWithdrawalQueued` fires in Prometheus and
+reaches Alertmanager while the withdrawal waits, `VaultPaused` while the vault is
+paused, and each clears once the withdrawal is paid and the vault unpaused
+([docs/design/observability.md](observability.md)). A run does not start while either
+fires.
+
 A failed check is reported as an error, never retried. Every run takes new ids, a new
 account and a new recipient from the block it starts at. The run takes about three
 minutes, set by the queue delay; `-preflight` checks only that a run can start. A run
@@ -218,7 +224,7 @@ and 128 invariant runs of 64 calls; CI runs 10,000 and 512 of 128.
 | Concern | How it is handled |
 |---|---|
 | Reentrancy | Every function that moves value is guarded (`nonReentrant`, the first modifier, on a `transient` variable the compiler keeps in transient storage: no storage slot, cleared after every transaction), and changes state and emits its event before any external call. A token deposit pulls the token last and reverts unless exactly the amount arrived. |
-| Time | The vault's clock (ERC-6372, `clock()` and `CLOCK_MODE`) is the L2 block number: whoever produces a block chooses its timestamp within the chain's rules, but not its number. Delays and refills are counted in blocks; they are durations because the OP Stack makes a block every 2 s, fixed by derivation, which `make vault-verify` checks against the rollup config. The timelock and the admin handover are OpenZeppelin's and count seconds. If the sequencer stops, it catches up afterwards by making the missed blocks at once, so a queued withdrawal can be due the moment blocks resume, with no time for the guardian in between. The guardian can pause; nothing yet alerts on `WithdrawalQueued` (finding F2 of the review). |
+| Time | The vault's clock (ERC-6372, `clock()` and `CLOCK_MODE`) is the L2 block number: whoever produces a block chooses its timestamp within the chain's rules, but not its number. Delays and refills are counted in blocks; they are durations because the OP Stack makes a block every 2 s, fixed by derivation, which `make vault-verify` checks against the rollup config. The timelock and the admin handover are OpenZeppelin's and count seconds. If the sequencer stops, it catches up afterwards by making the missed blocks at once, so a queued withdrawal can be due the moment blocks resume, with no time for the guardian in between. The guardian can pause; `VaultWithdrawalQueued` fires the moment a withdrawal is queued. |
 | Narrowing | Every conversion to a smaller integer goes through `SafeCast` and reverts rather than truncates. |
 | Tokens that misbehave | `SafeERC20` for tokens that return no value; the received amount is measured, and a difference reverts. Only allowed tokens are accepted. |
 | ETH to a contract that reverts | The payment reverts with `NativeTransferFailed` and the id stays unused, so the ledger can retry or send it elsewhere. |

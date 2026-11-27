@@ -62,15 +62,16 @@ func TestDeploymentRoundTrip(t *testing.T) {
 	if _, err := ReadDeployment(root); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("missing: err = %v", err)
 	}
-	if err := os.MkdirAll(filepath.Join(root, Dir), 0o700); err != nil {
-		t.Fatal(err)
-	}
 	d := &Deployment{
 		ChainID: 420420, Vault: common.HexToAddress("0x01"), Block: 7,
 		StorageLayout: []storagelayout.Entry{{Label: "_n", Slot: "5", Offset: 0, Bytes: 32, Type: "uint256:32"}},
 	}
 	if err := WriteDeployment(root, d); err != nil {
 		t.Fatal(err)
+	}
+	// The record has its own folder, created on the first write, apart from the keys.
+	if _, err := os.Stat(filepath.Join(root, RecordDir, DeploymentFile)); err != nil {
+		t.Fatalf("no record in %s: %v", RecordDir, err)
 	}
 	got, err := ReadDeployment(root)
 	if err != nil {

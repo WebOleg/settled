@@ -9,7 +9,9 @@
 //     guardian cannot unpause; the admin unpauses it through the timelock;
 //   - after the release block the operator pays the queued withdrawal;
 //   - the vault's balance, what it accounts for, and what the recipient received are
-//     exact to the wei.
+//     exact to the wei;
+//   - the monitoring sees it: VaultWithdrawalQueued and VaultPaused fire and reach
+//     Alertmanager while the withdrawal waits and the vault is paused, and clear after.
 //
 // Every run uses new ids and a new recipient, derived from the block it starts at, so
 // runs never collide. With -preflight it only checks that a run can start, and sends
@@ -21,10 +23,12 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"math/big"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -62,11 +66,14 @@ func main() {
 	rpcURL := flag.String("rpc", "http://127.0.0.1:18545", "sequencer execution JSON-RPC on the L2")
 	outDir := flag.String("out", "contracts/out", "forge build output")
 	preflight := flag.Bool("preflight", false, "only check that a run can start; send nothing")
+	prometheus := flag.String("prometheus", "http://127.0.0.1:9090", "Prometheus, which evaluates the vault's alerts")
+	alertmanager := flag.String("alertmanager", "http://127.0.0.1:9093", "Alertmanager, which receives them")
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	if err := run(ctx, *rpcURL, *outDir, *preflight); err != nil {
+	mon := &monitor{prometheus: *prometheus, alertmanager: *alertmanager, http: &http.Client{Timeout: 5 * time.Second}}
+	if err := run(ctx, *rpcURL, *outDir, *preflight, mon); err != nil {
 		fmt.Fprintf(os.Stderr, "vault-check: FAIL: %v\n", err)
 		os.Exit(1)
 	}
@@ -85,7 +92,7 @@ func ok(name, detail string) {
 	fmt.Printf("ok    %-52s %s\n", name, detail)
 }
 
-func run(ctx context.Context, rpcURL, outDir string, preflight bool) error {
+func run(ctx context.Context, rpcURL, outDir string, preflight bool, mon *monitor) error {
 	d, err := vaultconf.ReadDeployment(".")
 	if err != nil {
 		return fmt.Errorf("%w (run make vault-deploy)", err)
@@ -163,6 +170,17 @@ func run(ctx context.Context, rpcURL, outDir string, preflight bool) error {
 	}
 	if paused.Sign() == 0 && available.Cmp(small) < 0 {
 		return fmt.Errorf("the rate limit lets out %s ETH, less than %s; wait for it to refill", funding.FormatEther(available), funding.FormatEther(small))
+	}
+	if paused.Sign() == 0 {
+		// Before a run, no vault alert may fire, or the run could not show its own.
+		for _, a := range []string{alertQueued, alertPaused} {
+			if firing, err := mon.firing(ctx, a); err != nil {
+				return fmt.Errorf("%w (make obs-up starts the monitoring)", err)
+			} else if firing {
+				return fmt.Errorf("%s is firing before the run; see docs/runbooks.md", a)
+			}
+		}
+		ok("monitoring answers, no vault alert firing", mon.prometheus)
 	}
 	if preflight {
 		fmt.Printf("vault-check: preflight ok; vault %s, block %s, paused %v\n", d.Vault, head.Number, paused.Sign() != 0)
@@ -305,6 +323,9 @@ func run(ctx context.Context, rpcURL, outDir string, preflight bool) error {
 		return fmt.Errorf("a queued withdrawal before its release: %w", err)
 	}
 	ok("the queue is refused before the release block", fmt.Sprintf("WithdrawalNotReleased(id, %d)", releaseAt))
+	if err := c.alert(mon, alertQueued, true); err != nil {
+		return err
+	}
 
 	// 5. Pause.
 	pause, err := vault.Call("pause")
@@ -319,6 +340,9 @@ func run(ctx context.Context, rpcURL, outDir string, preflight bool) error {
 		return fmt.Errorf("not paused after the guardian's pause: %v", err)
 	}
 	ok("guardian paused the vault", fmt.Sprintf("block %s", receipt.BlockNumber))
+	if err := c.alert(mon, alertPaused, true); err != nil {
+		return err
+	}
 	depositAgain, err := vault.Call("deposit", vaultconf.Native, small, account)
 	if err != nil {
 		return err
@@ -344,6 +368,9 @@ func run(ctx context.Context, rpcURL, outDir string, preflight bool) error {
 	if err := c.unpause(keys[vaultconf.TimelockProposer], tag); err != nil {
 		return err
 	}
+	if err := c.alert(mon, alertPaused, false); err != nil {
+		return err
+	}
 
 	// 7. The queued withdrawal, after its release block.
 	if err := c.waitForBlock(releaseAt); err != nil {
@@ -363,6 +390,9 @@ func run(ctx context.Context, rpcURL, outDir string, preflight bool) error {
 		return err
 	}
 	ok("queued withdrawal paid after its release block", fmt.Sprintf("%s ETH, block %s", funding.FormatEther(large), receipt.BlockNumber))
+	if err := c.alert(mon, alertQueued, false); err != nil {
+		return err
+	}
 
 	// 8. Every wei.
 	if err := c.balance("recipient received exactly both amounts", recipient, deposit); err != nil {
@@ -381,6 +411,114 @@ func run(ctx context.Context, rpcURL, outDir string, preflight bool) error {
 	ok("one deposit counted", count.String())
 	fmt.Println("vault-check: ok")
 	return nil
+}
+
+// The vault's alerts (infra/observability/alerts.yml) that a run makes fire.
+const (
+	alertQueued = "VaultWithdrawalQueued"
+	alertPaused = "VaultPaused"
+	// alertWait is how long an alert may take to follow the chain: the exporter polls
+	// every 2 s, Prometheus scrapes and evaluates every 5 s, and Alertmanager waits 10 s
+	// before it groups a new alert.
+	alertWait = 60 * time.Second
+)
+
+// monitor asks Prometheus and Alertmanager about alerts.
+type monitor struct {
+	prometheus, alertmanager string
+	http                     *http.Client
+}
+
+// firing reports whether Prometheus has the alert firing.
+func (m *monitor) firing(ctx context.Context, name string) (bool, error) {
+	var out struct {
+		Data struct {
+			Alerts []struct {
+				Labels map[string]string `json:"labels"`
+				State  string            `json:"state"`
+			} `json:"alerts"`
+		} `json:"data"`
+	}
+	if err := m.get(ctx, m.prometheus+"/api/v1/alerts", &out); err != nil {
+		return false, err
+	}
+	for _, a := range out.Data.Alerts {
+		if a.Labels["alertname"] == name && a.State == "firing" {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// received reports whether Alertmanager holds the alert as active.
+func (m *monitor) received(ctx context.Context, name string) (bool, error) {
+	var out []struct {
+		Labels map[string]string `json:"labels"`
+		Status struct {
+			State string `json:"state"`
+		} `json:"status"`
+	}
+	if err := m.get(ctx, m.alertmanager+"/api/v2/alerts", &out); err != nil {
+		return false, err
+	}
+	for _, a := range out {
+		if a.Labels["alertname"] == name && a.Status.State == "active" {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (m *monitor) get(ctx context.Context, url string, v any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := m.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("monitoring: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("monitoring: %s: HTTP %d", url, resp.StatusCode)
+	}
+	return json.NewDecoder(resp.Body).Decode(v)
+}
+
+// alert waits until the alert fires in Prometheus and is active in Alertmanager (want
+// true), or no longer fires in Prometheus (want false).
+func (c *checker) alert(mon *monitor, name string, want bool) error {
+	start := time.Now()
+	tick := time.NewTicker(2 * time.Second)
+	defer tick.Stop()
+	for {
+		firing, err := mon.firing(c.ctx, name)
+		if err != nil {
+			return err
+		}
+		done := firing == want
+		if done && want {
+			if done, err = mon.received(c.ctx, name); err != nil {
+				return err
+			}
+		}
+		if done {
+			state := "fires and reached Alertmanager"
+			if !want {
+				state = "cleared"
+			}
+			ok(fmt.Sprintf("alert %s %s", name, state), fmt.Sprintf("after %d s", int(time.Since(start).Seconds())))
+			return nil
+		}
+		if time.Since(start) > alertWait {
+			return fmt.Errorf("alert %s: want firing %v, still not after %s", name, want, alertWait)
+		}
+		select {
+		case <-c.ctx.Done():
+			return c.ctx.Err()
+		case <-tick.C:
+		}
+	}
 }
 
 // unpause runs unpause() through the timelock and checks the vault is no longer paused.

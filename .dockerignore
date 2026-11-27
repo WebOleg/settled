@@ -1,0 +1,8 @@
+# The only image built with the repository root as its context is the vault exporter's
+# (infra/images/vault-exporter): its sources go in, nothing else. Chain data and keys
+# in .devnet, contract builds and libraries never reach a build.
+*
+!go.mod
+!go.sum
+!cmd/vault-exporter
+!internal/vaultwatch

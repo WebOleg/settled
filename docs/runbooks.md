@@ -114,6 +114,68 @@ Do:
 - `make l2-fund` tops both up. In production the top-up comes from a treasury account
   with a limit, and the threshold is set from the daily spend.
 
+## VaultInsolvent
+
+The vault holds less ETH than its deposits account for, compared to the wei. Its own
+checks make this impossible for ETH; if it fires, something outside the code's
+assumptions happened, and every further payment risks paying one user with another's
+funds.
+
+Look at:
+- Dashboard, Details: vault: when held fell below owed.
+- The vault's events since then (`WithdrawalPaid`, `Skimmed`) and its implementation: an
+  upgrade that was not expected.
+
+Do:
+- The guardian pauses the vault at once; nothing is paid while it is paused.
+- Find the cause before anything is unpaused; the admin unpauses only through the
+  timelock.
+
+## VaultWithdrawalQueued
+
+A large withdrawal waits in the vault's queue. It can be paid from its release block
+on, 60 blocks (2 minutes) after it was queued on the devnet; until then the guardian can
+cancel it. A withdrawal the ledger did not ask for means the operator key is not safe.
+
+Look at:
+- Dashboard, Details: vault: how many and how much.
+- The `WithdrawalQueued` event: its id, recipient and amount, and the ledger's entry for
+  that id.
+
+Do:
+- It matches the ledger: nothing; the operator pays it after its release block and the
+  alert clears.
+- It does not: the guardian cancels it (`cancelQueued(id)`) and pauses the vault, and
+  the operator key is replaced through the timelock.
+
+## VaultPaused
+
+The guardian has paused the vault: deposits and payments stop until the admin unpauses
+it through the timelock.
+
+Look at:
+- Who paused and why: the guardian's `Paused` event and whoever holds the guardian key.
+
+Do:
+- A deliberate pause: nothing until its cause is resolved; then the admin unpauses
+  through the timelock and the alert clears.
+- A pause no one asked for: the guardian key is not safe; the admin revokes its role
+  through the timelock.
+
+## VaultWatchStale
+
+The vault exporter has not read the chain for a minute, so the other vault alerts see an
+old state and could miss a queued withdrawal.
+
+Look at:
+- `docker compose -f infra/observability/compose.yaml logs --tail 50 vault-exporter`:
+  it logs each new error once.
+- `make status`: is the verifier's op-reth running.
+
+Do:
+- The verifier is down: `make l2-up`.
+- The exporter is down: `make obs-up` starts it.
+
 ## TargetDown
 
 A client of the devnet has not answered Prometheus for a minute. Its own metrics are

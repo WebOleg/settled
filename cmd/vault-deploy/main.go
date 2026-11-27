@@ -78,7 +78,7 @@ func run(ctx context.Context, rpcURL, outDir string) error {
 	switch {
 	case err == nil:
 		if existing.L2Genesis != genesis.Hash() {
-			return fmt.Errorf("%s/%s belongs to another L2 (genesis %s, this one %s); run make vault-reset", vaultconf.Dir, vaultconf.DeploymentFile, existing.L2Genesis, genesis.Hash())
+			return fmt.Errorf("%s/%s belongs to another L2 (genesis %s, this one %s); run make vault-reset", vaultconf.RecordDir, vaultconf.DeploymentFile, existing.L2Genesis, genesis.Hash())
 		}
 		code, err := client.CodeAt(ctx, existing.Vault, nil)
 		if err != nil {
@@ -187,7 +187,7 @@ func run(ctx context.Context, rpcURL, outDir string) error {
 	if err := configure(ctx, client, proposer, vault, timelock, timelockAddr, vaultAddr, config, delay); err != nil {
 		return err
 	}
-	fmt.Printf("vault-deploy: ok, record in %s\n", filepath.Join(vaultconf.Dir, vaultconf.DeploymentFile))
+	fmt.Printf("vault-deploy: ok, record in %s\n", filepath.Join(vaultconf.RecordDir, vaultconf.DeploymentFile))
 	return nil
 }
 

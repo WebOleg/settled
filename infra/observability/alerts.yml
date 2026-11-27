@@ -1,5 +1,6 @@
 # Alert rules. Each rule but the last is an overview tile of the chain dashboard: the
-# same query, the same red line, held for a minute so a single slow scrape does not page.
+# same query, the same red line, held for a minute so a single slow scrape does not page
+# (the vault's, which read exact state, fire at once; see there).
 # make obs-check fails if a rule and its tile differ. A client that stops takes its own
 # metrics with it, and a query over metrics that are gone returns nothing, so no tile
 # turns red; TargetDown covers that. Each rule links its runbook in docs/runbooks.md.
@@ -65,6 +66,49 @@ groups:
         annotations:
           summary: The batcher or the proposer holds less than 1 ETH on the L1.
           runbook: docs/runbooks.md#operatorfundslow
+
+      # The vault. These read the chain's state exactly, not a rate, so one reading is
+      # enough: each fires at once. A queued withdrawal must be checked within the queue
+      # delay, and a pause or a shortfall must be seen the moment it happens.
+      - alert: VaultInsolvent
+        expr: min(vault_solvent{chain="l2"}) < 1
+        for: 0s
+        labels:
+          severity: page
+          tile: Vault holds what it owes
+        annotations:
+          summary: The vault holds less ETH than its deposits account for.
+          runbook: docs/runbooks.md#vaultinsolvent
+
+      - alert: VaultWithdrawalQueued
+        expr: max(vault_queued_withdrawals{chain="l2"}) >= 1
+        for: 0s
+        labels:
+          severity: page
+          tile: Vault queue is empty
+        annotations:
+          summary: A large withdrawal waits in the vault's queue; check it against the ledger before its release block.
+          runbook: docs/runbooks.md#vaultwithdrawalqueued
+
+      - alert: VaultPaused
+        expr: max(vault_paused{chain="l2"}) >= 1
+        for: 0s
+        labels:
+          severity: page
+          tile: Vault is open
+        annotations:
+          summary: The guardian has paused the vault; deposits and payments stop.
+          runbook: docs/runbooks.md#vaultpaused
+
+      - alert: VaultWatchStale
+        expr: time() - max(vault_watch_last_success_timestamp_seconds{chain="l2"}) >= 60
+        for: 1m
+        labels:
+          severity: page
+          tile: Vault is watched
+        annotations:
+          summary: The vault exporter has not read the chain for a minute; the vault alerts above see an old state.
+          runbook: docs/runbooks.md#vaultwatchstale
 
       - alert: TargetDown
         expr: up == 0

@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# Shows that Prometheus scrapes every client of the devnet: each of the nine targets is
-# up, and each job reports series. Then Grafana: it is healthy, the admin password from
-# obs-init.sh works, an anonymous visitor can read the dashboard but not change it, and
-# every query of every panel returns data and shows only live series. Then the alerts:
-# every rule is loaded, matches its tile and has a runbook, Alertmanager receives them,
-# and none fires on a healthy devnet. Waits up to 60 s for the first scrape.
+# Shows that Prometheus scrapes every client of the devnet and the vault exporter: each
+# of the ten targets is up, and each job reports series. Then Grafana: it is healthy,
+# the admin password from obs-init.sh works, an anonymous visitor can read the dashboard
+# but not change it, and every query of every panel returns data and shows only live
+# series. Then the alerts: every rule is loaded, matches its tile and has a runbook,
+# Alertmanager receives them, and none fires on a healthy devnet. Waits up to 60 s for
+# the first scrape.
 set -euo pipefail
 
 PROM="http://127.0.0.1:9090"
 GRAFANA="http://127.0.0.1:3000"
 ALERTMANAGER="http://127.0.0.1:9093"
-EXPECTED_TARGETS=9
+EXPECTED_TARGETS=10
 root="$(git rev-parse --show-toplevel)"
 DASHBOARD="$root/infra/observability/grafana/dashboards/chain.json"
 RULES="$root/infra/observability/alerts.yml"
@@ -46,7 +47,7 @@ echo "targets          $up of $total up"
 series="$(query 'count by (job) ({__name__=~".+", job!=""})')" || fail "query failed"
 printf '%s' "$series" | jq -r '.data.result[] | "series           \(.metric.job): \(.value[1])"' | sort
 jobs="$(printf '%s' "$series" | jq '.data.result | length')"
-[ "$jobs" -eq 7 ] || fail "$jobs jobs report series, want 7"
+[ "$jobs" -eq 8 ] || fail "$jobs jobs report series, want 8"
 
 # Grafana.
 waited=0
@@ -104,7 +105,7 @@ queries="$(jq '[[.panels[] | if .type == "row" then (.panels // [])[] else . end
 [ "$stale" -eq 0 ] || fail "$stale of $queries panel queries show series that have stopped"
 echo "panels           all $queries queries of the $panels panels return data, name their chain and show only live series"
 
-# The home page is this dashboard, so whoever opens Grafana sees the six questions first.
+# The home page is this dashboard, so whoever opens Grafana sees the overview first.
 # A home dashboard read from a file is served as a copy under Grafana's own uid
 # (default-home-dashboard), so the page is matched by uid, by title, or by the slug
 # Grafana makes from the title in its redirect ("settled: chain" -> "settled3a-chain").

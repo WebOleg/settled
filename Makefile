@@ -163,13 +163,16 @@ vault-check: ## Run the vault's rules on the L2 with real transactions and accou
 vault-reset: ## Forget the vault deployment and keep its keys, for a new L2
 	@scripts/contracts/vault-deploy.sh --reset
 
-obs-up: ## Start Prometheus, Alertmanager and Grafana; needs l1-up and l2-up
+obs-up: ## Start Prometheus, Alertmanager, Grafana and the vault exporter; needs l1-up and l2-up
 	@scripts/observability/obs-init.sh
 	@docker run --rm --entrypoint promtool -v "$(CURDIR)/infra/observability:/c:ro" $(PROM_IMAGE) check config /c/prometheus.yml
 	@docker run --rm --entrypoint amtool -v "$(CURDIR)/infra/observability:/c:ro" $(AM_IMAGE) check-config /c/alertmanager.yml
-	@$(OBS) up -d --quiet-pull --remove-orphans
+	@$(OBS) up -d --quiet-pull --remove-orphans --build
+	@# Their configs are single files mounted at creation; a file replaced on disk is a new
+	@# file the old container does not see, so both are recreated to read the current ones.
+	@$(OBS) up -d --quiet-pull --no-deps --force-recreate prometheus alertmanager
 
-obs-check: ## Show that all nine clients are scraped, every panel has data and every alert rule matches its tile
+obs-check: ## Show that all ten targets are scraped, every panel has data and every alert rule matches its tile
 	@scripts/observability/obs-check.sh
 
 alert-drill: ## Stop the batcher, see its alerts fire and reach Alertmanager, start it, see them clear

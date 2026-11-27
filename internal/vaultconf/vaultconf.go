@@ -18,10 +18,13 @@ import (
 	"github.com/WebOleg/settled/internal/storagelayout"
 )
 
-// Dir is where the deployment lives, KeysDir its keys, one file per role.
+// Dir is where the vault's devnet files live: KeysDir its keys, one file per role, and
+// RecordDir the deployment record. The record has a folder of its own so that the vault
+// exporter can mount it read-only without seeing the keys.
 const (
 	Dir            = ".devnet/vault"
 	KeysDir        = ".devnet/vault/keys"
+	RecordDir      = ".devnet/vault/record"
 	DeploymentFile = "deployment.json"
 )
 
@@ -118,10 +121,10 @@ type Deployment struct {
 	StorageLayout []storagelayout.Entry `json:"storageLayout,omitempty"`
 }
 
-// ReadDeployment reads Dir/deployment.json from root. It wraps fs.ErrNotExist when there
+// ReadDeployment reads RecordDir/deployment.json from root. It wraps fs.ErrNotExist when there
 // is none.
 func ReadDeployment(root string) (*Deployment, error) {
-	raw, err := os.ReadFile(filepath.Join(root, Dir, DeploymentFile))
+	raw, err := os.ReadFile(filepath.Join(root, RecordDir, DeploymentFile))
 	if err != nil {
 		return nil, fmt.Errorf("vaultconf: %w", err)
 	}
@@ -132,14 +135,17 @@ func ReadDeployment(root string) (*Deployment, error) {
 	return &d, nil
 }
 
-// WriteDeployment writes Dir/deployment.json under root through a temporary file and a
-// rename, so a reader never sees half a record.
+// WriteDeployment writes RecordDir/deployment.json under root through a temporary file
+// and a rename, so a reader never sees half a record.
 func WriteDeployment(root string, d *Deployment) error {
 	raw, err := json.MarshalIndent(d, "", "  ")
 	if err != nil {
 		return fmt.Errorf("vaultconf: encode deployment: %w", err)
 	}
-	path := filepath.Join(root, Dir, DeploymentFile)
+	if err := os.MkdirAll(filepath.Join(root, RecordDir), 0o755); err != nil {
+		return fmt.Errorf("vaultconf: create %s: %w", RecordDir, err)
+	}
+	path := filepath.Join(root, RecordDir, DeploymentFile)
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, append(raw, '\n'), 0o644); err != nil {
 		return fmt.Errorf("vaultconf: write %s: %w", tmp, err)

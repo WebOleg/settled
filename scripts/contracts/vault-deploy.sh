@@ -7,8 +7,8 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 if [ "${1:-}" = "--reset" ]; then
-  rm -f .devnet/vault/deployment.json
-  echo "vault-deploy: removed .devnet/vault/deployment.json; keys kept"
+  rm -f .devnet/vault/record/deployment.json
+  echo "vault-deploy: removed .devnet/vault/record/deployment.json; keys kept"
   exit 0
 fi
 scripts/contracts/build.sh
