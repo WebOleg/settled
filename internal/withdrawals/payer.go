@@ -57,6 +57,9 @@ type Report struct {
 	// Bumped are replacements signed; Capped are transactions left as they are because
 	// a replacement would offer more than MaxFeeCap.
 	Bumped, Capped int
+	// Closed are transactions closed: a version final, or the nonce used by a final
+	// block.
+	Closed int
 }
 
 func (p *Payer) sender() common.Address { return crypto.PubkeyToAddress(p.Key.PublicKey) }
@@ -86,7 +89,109 @@ func (p *Payer) Step(ctx context.Context) (Report, error) {
 			return rep, err
 		}
 	}
+	// A withdrawal settled, cancelled or rejected may still have transactions open: the
+	// indexer settles it once its payment is final, and the payer has not looked since.
+	// They are closed the same way, and one still in flight is sent again, so its nonce
+	// is not left empty.
+	rows, err = p.Ledger.Pool().Query(ctx, `SELECT DISTINCT t.withdrawal_id FROM withdrawal_txs t JOIN withdrawals w ON w.id = t.withdrawal_id
+		WHERE w.vault = $1 AND NOT t.done AND w.status NOT IN ('requested', 'onchain') LIMIT $2`, p.Vault.Bytes(), max(p.Batch, 1))
+	if err != nil {
+		return rep, fmt.Errorf("withdrawals: list closed with transactions open: %w", err)
+	}
+	done, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (common.Hash, error) {
+		var b []byte
+		err := r.Scan(&b)
+		return common.BytesToHash(b), err
+	})
+	if err != nil {
+		return rep, fmt.Errorf("withdrawals: list closed with transactions open: %w", err)
+	}
+	for _, id := range done {
+		if err := p.tidy(ctx, id, &rep); err != nil {
+			return rep, err
+		}
+	}
 	return rep, nil
+}
+
+// sweep closes the slots of a withdrawal that no reorganisation can undo any more: a
+// version mined in a final block, or a nonce a final block has used. Until then a
+// reorganisation can take a transaction out of the chain again. It returns the slots in
+// flight: open, with no version mined now.
+func (p *Payer) sweep(ctx context.Context, tx pgx.Tx, id common.Hash, rep *Report) ([]slot, error) {
+	slots, err := p.openSlots(ctx, tx, id)
+	if err != nil || len(slots) == 0 {
+		return nil, err
+	}
+	mined, err := p.Chain.Nonce(ctx, p.sender())
+	if err != nil {
+		return nil, err
+	}
+	finalBlock, finalNonce, err := p.Chain.Finalized(ctx, p.sender())
+	if err != nil {
+		return nil, err
+	}
+	var inFlight []slot
+	for _, s := range slots {
+		var r *Receipt
+		for _, o := range s.versions {
+			if r, err = p.Chain.Receipt(ctx, o.hash); err != nil {
+				return nil, err
+			}
+			if r != nil {
+				break
+			}
+		}
+		if (r != nil && r.Block <= finalBlock) || (r == nil && s.nonce < finalNonce) {
+			for _, o := range s.versions {
+				if _, err := tx.Exec(ctx, "UPDATE withdrawal_txs SET done = true WHERE id = $1", o.id); err != nil {
+					return nil, fmt.Errorf("withdrawals: close tx %s: %w", o.hash, err)
+				}
+				rep.Closed++
+			}
+			continue
+		}
+		if r == nil && s.nonce >= mined {
+			inFlight = append(inFlight, s)
+		}
+	}
+	return inFlight, nil
+}
+
+// tidy closes what it can of the transactions of a withdrawal no longer open, and sends
+// one still in flight again, its latest version; it signs nothing new.
+func (p *Payer) tidy(ctx context.Context, id common.Hash, rep *Report) error {
+	var toSend []*types.Transaction
+	err := p.Ledger.InTx(ctx, func(tx pgx.Tx, _ *ledger.Ledger) error {
+		var status string
+		err := tx.QueryRow(ctx, "SELECT status FROM withdrawals WHERE id = $1 FOR UPDATE SKIP LOCKED", id.Bytes()).Scan(&status)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil // another payer has it
+		}
+		if err != nil {
+			return fmt.Errorf("withdrawals: lock %s: %w", id, err)
+		}
+		inFlight, err := p.sweep(ctx, tx, id, rep)
+		if err != nil {
+			return err
+		}
+		for _, s := range inFlight {
+			o := s.latest()
+			if o.sinceSent == nil || *o.sinceSent >= p.ResendAfter {
+				t := new(types.Transaction)
+				if err := t.UnmarshalBinary(o.raw); err != nil {
+					return fmt.Errorf("withdrawals: decode tx %s: %w", o.hash, err)
+				}
+				toSend = append(toSend, t)
+				rep.Resent++
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	return p.send(ctx, toSend)
 }
 
 // open is one version of an open transaction.
@@ -130,44 +235,9 @@ func (p *Payer) work(ctx context.Context, id common.Hash, rep *Report) error {
 		}
 		amt, _ := new(big.Int).SetString(amount, 10)
 
-		// A transaction stays open until no reorganisation can undo it: a version mined in
-		// a final block, or its nonce used by a final block. Until then a reorganisation
-		// can take it out of the chain again, and it is sent again, so its nonce is never
-		// left empty. In flight is open with no version mined now.
-		slots, err := p.openSlots(ctx, tx, id)
+		inFlight, err := p.sweep(ctx, tx, id, rep)
 		if err != nil {
 			return err
-		}
-		mined, err := p.Chain.Nonce(ctx, p.sender())
-		if err != nil {
-			return err
-		}
-		finalBlock, finalNonce, err := p.Chain.Finalized(ctx, p.sender())
-		if err != nil {
-			return err
-		}
-		var inFlight []slot
-		for _, s := range slots {
-			var r *Receipt
-			for _, o := range s.versions {
-				if r, err = p.Chain.Receipt(ctx, o.hash); err != nil {
-					return err
-				}
-				if r != nil {
-					break
-				}
-			}
-			if (r != nil && r.Block <= finalBlock) || (r == nil && s.nonce < finalNonce) {
-				for _, o := range s.versions {
-					if _, err := tx.Exec(ctx, "UPDATE withdrawal_txs SET done = true WHERE id = $1", o.id); err != nil {
-						return fmt.Errorf("withdrawals: close tx %s: %w", o.hash, err)
-					}
-				}
-				continue
-			}
-			if r == nil && s.nonce >= mined {
-				inFlight = append(inFlight, s)
-			}
 		}
 
 		onChain, err := p.Chain.Withdrawal(ctx, p.Vault, id)
@@ -311,14 +381,19 @@ func (p *Payer) work(ctx context.Context, id common.Hash, rep *Report) error {
 	if err != nil {
 		return err
 	}
+	return p.send(ctx, toSend)
+}
+
+// send sends what a step recorded, after its commit. A node that already has the
+// transaction, or has mined its nonce, says so, which is fine: the next step reads the
+// receipt.
+func (p *Payer) send(ctx context.Context, toSend []*types.Transaction) error {
 	for _, t := range toSend {
 		if p.beforeSend != nil {
 			if err := p.beforeSend(t); err != nil {
 				return err
 			}
 		}
-		// A node that already has it, or has mined its nonce, says so: either is fine,
-		// the next step reads the receipt.
 		if err := p.Chain.Send(ctx, t); err != nil && !alreadyKnown(err) {
 			return fmt.Errorf("withdrawals: send %s: %w", t.Hash(), err)
 		}

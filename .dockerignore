@@ -1,13 +1,16 @@
 # The images built with the repository root as their context are the vault exporter's
-# (infra/images/vault-exporter) and the deposit indexer's (infra/images/deposit-indexer):
-# their sources go in, nothing else. Chain data, keys and passwords in .devnet, contract
-# builds and libraries never reach a build.
+# (infra/images/vault-exporter), the deposit indexer's (infra/images/deposit-indexer) and
+# the withdrawal payer's (infra/images/withdrawal-payer): their sources go in, nothing
+# else. Chain data, keys and passwords in .devnet, contract builds and libraries never
+# reach a build.
 *
 !go.mod
 !go.sum
 !cmd/vault-exporter
 !cmd/deposit-indexer
+!cmd/withdrawal-payer
 !internal/vaultwatch
 !internal/ledger
 !internal/deposits
 !internal/suspense
+!internal/withdrawals

@@ -17,8 +17,6 @@ package main
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"errors"
 	"flag"
 	"fmt"
 	"math/big"
@@ -27,25 +25,15 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 
-	"github.com/WebOleg/settled/internal/artifact"
+	"github.com/WebOleg/settled/internal/anvil"
 	"github.com/WebOleg/settled/internal/deposits"
-	"github.com/WebOleg/settled/internal/devkeys"
 	"github.com/WebOleg/settled/internal/ledger"
 	"github.com/WebOleg/settled/internal/txsend"
-	"github.com/WebOleg/settled/internal/txwait"
 )
-
-// anvilMnemonic is the public test mnemonic anvil funds its accounts from.
-const anvilMnemonic = "test test test test test test test test test test test junk"
-
-// anvilFinality is how many blocks anvil's finalized block trails its head.
-const anvilFinality = 64
 
 func main() {
 	rpcURL := flag.String("rpc", "http://127.0.0.1:8545", "anvil's JSON-RPC")
@@ -82,66 +70,27 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 	defer l.Close()
 
 	keys := make([]common.Address, 3)
-	admin, err := devkeys.FromMnemonic(anvilMnemonic, 0)
+	admin, err := anvil.Key(0)
 	if err != nil {
 		return err
 	}
 	for i := range keys {
-		k, err := devkeys.FromMnemonic(anvilMnemonic, uint32(i))
+		k, err := anvil.Key(uint32(i))
 		if err != nil {
 			return err
 		}
 		keys[i] = crypto.PubkeyToAddress(k.PublicKey)
 	}
-	vault, err := artifact.Load(outDir, "Vault.sol", "Vault")
+	vault, err := anvil.DeployVault(ctx, client, outDir, admin, anvil.Roles{Admin: keys[0], Operator: keys[1], Guardian: keys[2]}, 60,
+		anvil.TokenConfig{Allowed: true, Capacity: anvil.Ether(10), RefillPeriod: 1800, LargeThreshold: anvil.Ether(5)})
 	if err != nil {
 		return err
 	}
-	proxy, err := artifact.Load(outDir, "ERC1967Proxy.sol", "ERC1967Proxy")
-	if err != nil {
-		return err
-	}
-	// Past anvil's finality distance first, so the finalized block exists.
-	if err := mine(ctx, client, anvilFinality+2); err != nil {
-		return err
-	}
-	code, err := vault.DeployData()
-	if err != nil {
-		return err
-	}
-	_, impl, err := txsend.Deploy(ctx, client, admin, code)
-	if err != nil {
-		return fmt.Errorf("deploy the implementation: %w", err)
-	}
-	init, err := vault.Call("initialize", keys[0], new(big.Int).SetUint64(300), keys[1], keys[2], uint64(60))
-	if err != nil {
-		return err
-	}
-	code, err = proxy.DeployData(impl, init)
-	if err != nil {
-		return err
-	}
-	receipt, at, err := txsend.Deploy(ctx, client, admin, code)
-	if err != nil {
-		return fmt.Errorf("deploy the proxy: %w", err)
-	}
-	type tokenConfig struct {
-		Allowed        bool
-		Capacity       *big.Int
-		RefillPeriod   uint64
-		LargeThreshold *big.Int
-	}
-	cfg, err := vault.Call("setTokenConfig", deposits.Native, tokenConfig{true, ether(10), 1800, ether(5)})
-	if err != nil {
-		return err
-	}
-	if _, err := txsend.Send(ctx, client, admin, at, new(big.Int), cfg); err != nil {
-		return fmt.Errorf("configure ETH: %w", err)
-	}
-	ok("vault deployed behind its proxy", fmt.Sprintf("%s, block %s", at, receipt.BlockNumber))
+	at := vault.At
+	ok("vault deployed behind its proxy", fmt.Sprintf("%s, block %d", at, vault.Block))
 
 	account := common.HexToHash("0xe2e")
-	x := &deposits.Indexer{Chain: deposits.RPC{Client: client}, Ledger: l, Vault: at, Start: receipt.BlockNumber.Uint64(), MaxRange: 16, MaxBlocks: 300}
+	x := &deposits.Indexer{Chain: deposits.RPC{Client: client}, Ledger: l, Vault: at, Start: vault.Block, MaxRange: 16, MaxBlocks: 300}
 	step := func(what string) (deposits.Report, error) {
 		rep, err := x.Step(ctx)
 		if err != nil {
@@ -154,7 +103,7 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 		if err != nil {
 			return err
 		}
-		if a.CreditsPending.Cmp(ether(pending)) != 0 || a.CreditsPosted.Cmp(ether(posted)) != 0 {
+		if a.CreditsPending.Cmp(anvil.Ether(pending)) != 0 || a.CreditsPosted.Cmp(anvil.Ether(posted)) != 0 {
 			return fmt.Errorf("%s: held %s, credited %s wei; want %d and %d ETH", what, a.CreditsPending, a.CreditsPosted, pending, posted)
 		}
 		ok(what, fmt.Sprintf("held %d ETH, credited %d ETH", pending, posted))
@@ -163,7 +112,7 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 
 	// 1. Held while not final.
 	for _, n := range []int64{1, 2} {
-		if _, err := deposit(ctx, client, vault, at, admin, account, n, true); err != nil {
+		if _, err := vault.Deposit(ctx, client, admin, account, anvil.Ether(n), true); err != nil {
 			return err
 		}
 	}
@@ -177,7 +126,7 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 	}
 
 	// 2. Credited once final.
-	if err := mine(ctx, client, anvilFinality+1); err != nil {
+	if err := anvil.Mine(ctx, client, anvil.Finality+1); err != nil {
 		return err
 	}
 	if rep, err := step("after finality"); err != nil {
@@ -190,7 +139,7 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 	}
 
 	// 3. A held deposit whose block is dropped.
-	if _, err := deposit(ctx, client, vault, at, admin, account, 3, true); err != nil {
+	if _, err := vault.Deposit(ctx, client, admin, account, anvil.Ether(3), true); err != nil {
 		return err
 	}
 	if _, err := step("after the third deposit"); err != nil {
@@ -199,7 +148,7 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 	if err := balance("third deposit held", 3, 3); err != nil {
 		return err
 	}
-	if err := reorg(ctx, client, 2, nil); err != nil {
+	if err := anvil.Reorg(ctx, client, 2, nil); err != nil {
 		return err
 	}
 	rep, err := step("after the reorganisation")
@@ -215,14 +164,14 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 	}
 
 	// 4. The same transaction back in another block.
-	raw, err := deposit(ctx, client, vault, at, admin, account, 4, true)
+	raw, err := vault.Deposit(ctx, client, admin, account, anvil.Ether(4), true)
 	if err != nil {
 		return err
 	}
 	if _, err := step("after the fourth deposit"); err != nil {
 		return err
 	}
-	if err := reorg(ctx, client, 1, raw); err != nil {
+	if err := anvil.Reorg(ctx, client, 1, raw); err != nil {
 		return err
 	}
 	rep, err = step("after the transaction moved")
@@ -233,7 +182,7 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 		return fmt.Errorf("after the transaction moved: %+v, want 1 voided and 1 seen", rep)
 	}
 	ok("its transaction came back in a new block", "voided in the old one, held in the new one")
-	if err := mine(ctx, client, anvilFinality+1); err != nil {
+	if err := anvil.Mine(ctx, client, anvil.Finality+1); err != nil {
 		return err
 	}
 	if _, err := step("after the final finality"); err != nil {
@@ -244,20 +193,20 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 	}
 
 	// 5. A payment the ledger never requested.
-	operator, err := devkeys.FromMnemonic(anvilMnemonic, 1)
+	operator, err := anvil.Key(1)
 	if err != nil {
 		return err
 	}
 	// Half an ETH: the rate limit starts empty and refills over 1,800 blocks.
-	half := new(big.Int).Div(ether(1), big.NewInt(2))
-	pay, err := vault.Call("withdraw", crypto.Keccak256Hash([]byte("paid without the ledger")), deposits.Native, keys[2], half)
+	half := new(big.Int).Div(anvil.Ether(1), big.NewInt(2))
+	pay, err := vault.ABI.Call("withdraw", crypto.Keccak256Hash([]byte("paid without the ledger")), deposits.Native, keys[2], half)
 	if err != nil {
 		return err
 	}
 	if _, err := txsend.Send(ctx, client, operator, at, new(big.Int), pay); err != nil {
 		return fmt.Errorf("pay without the ledger: %w", err)
 	}
-	if err := mine(ctx, client, anvilFinality+1); err != nil {
+	if err := anvil.Mine(ctx, client, anvil.Finality+1); err != nil {
 		return err
 	}
 	if rep, err := step("after the payment without the ledger"); err != nil {
@@ -287,7 +236,7 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 	if err != nil {
 		return err
 	}
-	call, err := vault.Call("accounted", deposits.Native)
+	call, err := vault.ABI.Call("accounted", deposits.Native)
 	if err != nil {
 		return err
 	}
@@ -305,68 +254,5 @@ func run(ctx context.Context, rpcURL, outDir, db, passwordFile string) error {
 		return fmt.Errorf("the ledger holds %s wei for the vault, the vault accounts for %s at block %s", held, onChain, fin.Number)
 	}
 	ok("ledger equals the vault on chain", fmt.Sprintf("%s wei at finalized block %s", held, fin.Number))
-	return nil
-}
-
-func ether(n int64) *big.Int { return new(big.Int).Mul(big.NewInt(n), big.NewInt(1e18)) }
-
-// deposit sends n ETH for account and returns the signed transaction, so a
-// reorganisation can include it again. With wait it waits for the receipt.
-func deposit(ctx context.Context, client *ethclient.Client, vault *artifact.Artifact, at common.Address, key *ecdsa.PrivateKey, account common.Hash, n int64, wait bool) ([]byte, error) {
-	data, err := vault.Call("deposit", deposits.Native, ether(n), account)
-	if err != nil {
-		return nil, err
-	}
-	chainID, err := client.ChainID(ctx)
-	if err != nil {
-		return nil, err
-	}
-	from := crypto.PubkeyToAddress(key.PublicKey)
-	nonce, err := client.PendingNonceAt(ctx, from)
-	if err != nil {
-		return nil, err
-	}
-	head, err := client.HeaderByNumber(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	tx, err := types.SignNewTx(key, types.LatestSignerForChainID(chainID), &types.DynamicFeeTx{
-		ChainID: chainID, Nonce: nonce, GasTipCap: big.NewInt(1), GasFeeCap: new(big.Int).Mul(head.BaseFee, big.NewInt(4)),
-		Gas: 200_000, To: &at, Value: ether(n), Data: data,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if err := client.SendTransaction(ctx, tx); err != nil {
-		return nil, fmt.Errorf("deposit %d ETH: %w", n, err)
-	}
-	if wait {
-		r, err := txwait.Receipt(ctx, client, tx.Hash())
-		if err != nil {
-			return nil, err
-		}
-		if r.Status != types.ReceiptStatusSuccessful {
-			return nil, errors.New("the deposit reverted")
-		}
-	}
-	return tx.MarshalBinary()
-}
-
-func mine(ctx context.Context, client *ethclient.Client, n uint64) error {
-	if err := client.Client().CallContext(ctx, nil, "anvil_mine", hexutil.Uint64(n)); err != nil {
-		return fmt.Errorf("anvil_mine: %w", err)
-	}
-	return nil
-}
-
-// reorg replaces the top depth blocks; raw, when given, goes into the first new block.
-func reorg(ctx context.Context, client *ethclient.Client, depth uint64, raw []byte) error {
-	pairs := []any{}
-	if raw != nil {
-		pairs = append(pairs, []any{hexutil.Bytes(raw), 0})
-	}
-	if err := client.Client().CallContext(ctx, nil, "anvil_reorg", depth, pairs); err != nil {
-		return fmt.Errorf("anvil_reorg: %w", err)
-	}
 	return nil
 }

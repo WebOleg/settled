@@ -253,7 +253,7 @@ type fixture struct {
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	ctx := context.Background()
-	db := ledgertest.New(t, ledger.Migrate, "withdrawal_requester, withdrawal_payer")
+	db := ledgertest.New(t, ledger.Migrate, "withdrawal_requester, withdrawal_payer, deposit_indexer")
 	l, err := ledger.Open(ctx, db.AppURL)
 	if err != nil {
 		t.Fatal(err)
@@ -775,4 +775,38 @@ func TestOutbox_theDatabaseRefusesWhatIsNotAReplacement(t *testing.T) {
 	if _, err := f.l.Pool().Exec(ctx, "UPDATE withdrawal_txs SET done = false WHERE id = $1", id); err == nil || !strings.Contains(err.Error(), "done once set") {
 		t.Errorf("a closed transaction reopened: %v, want it refused", err)
 	}
+}
+
+// The indexer settles a withdrawal once its payment is final, before the payer looks
+// again: the payer still closes its transaction, and signs nothing for it.
+func TestPayer_closesTheTransactionsOfASettledWithdrawal(t *testing.T) {
+	f := newFixture(t)
+	f.fund(t, alice, 5)
+	w := f.submit(t, "w-1", alice, 1)
+	p := f.payer(t)
+	f.step(t, p)
+	f.chain.mine()
+	for range 4 {
+		f.chain.mine()
+	}
+	ctx := context.Background()
+	// As the indexer does once the payment is final.
+	if _, err := f.l.Pool().Exec(ctx, "UPDATE withdrawals SET status = 'settled' WHERE id = $1", w.ID.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.l.Transfer(ctx, ledger.Transfer{Key: ledgerKey(w.ID) + ":post", Kind: ledger.Post, PendingKey: ledgerKey(w.ID), Code: "withdrawal"}); err != nil {
+		t.Fatal(err)
+	}
+	if rep := f.step(t, p); rep.Closed != 1 || rep.Signed != 0 || rep.Resent != 0 {
+		t.Fatalf("after the indexer settled it: %+v, want its transaction closed and nothing sent", rep)
+	}
+	var open int
+	if err := f.l.Pool().QueryRow(ctx, "SELECT count(*) FROM withdrawal_txs WHERE NOT done").Scan(&open); err != nil {
+		t.Fatal(err)
+	}
+	if open != 0 || f.chain.payments[w.ID] != 1 {
+		t.Fatalf("%d transactions open, %d payments; want 0 and 1", open, f.chain.payments[w.ID])
+	}
+	f.balance(t, alice, 0, 4)
+	f.clean(t)
 }

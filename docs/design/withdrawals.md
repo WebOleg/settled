@@ -43,7 +43,9 @@ Each open withdrawal is worked on in one database transaction that holds its row
 row another payer holds is skipped (`FOR UPDATE SKIP LOCKED`). In it the payer:
 
 1. closes the withdrawal's transactions that no reorganisation can undo any more: a
-   version mined in a final block, or a nonce a final block has used;
+   version mined in a final block, or a nonce a final block has used; the same is done
+   for a withdrawal the indexer has settled, cancelled or rejected meanwhile, whose
+   transaction in flight, if any, is sent again so its nonce is not left empty;
 2. reads the vault's record of the id and decides as in the table above;
 3. before signing, runs the call against the vault without sending it: a refusal that
    no retry changes (a recipient that refuses ETH, a token not allowed) rejects the
@@ -105,11 +107,33 @@ last error ever changes.
 | W10 Fee cap | No replacement goes above `MaxFeeCap`, and nothing is signed, and no nonce taken, while the network asks more. | `TestPayer_aReplacementStopsAtMaxFeeCap`, `TestPayer_aNetworkAboveMaxFeeCapIsWaitedOut` |
 | W11 Any version | The first version mined after a replacement was recorded closes the slot; nothing is paid or signed again. | `TestPayer_theFirstVersionMinedAfterAReplacementClosesTheSlot` |
 | W12 Outbox | The database refuses a version without fees, a second first version of a slot, a replacement less than a tenth higher, of another call or nonce, a second replacement of one version, and reopening a closed one. | `TestOutbox_theDatabaseRefusesWhatIsNotAReplacement` |
+| W13 Closed after settlement | A withdrawal the indexer settled before the payer looked again still has its transactions closed once final, and nothing is signed for it. | `TestPayer_closesTheTransactionsOfASettledWithdrawal`, `make check-bridge` |
 
 The tests run against a real PostgreSQL and a fake node that keeps a mempool, mines in
 nonce order, leaves unmined what tips below its minimum, replaces a transaction only
 for a tenth more, can lose its mempool and reorganise, and applies the vault's rule
 that an id is paid once.
+
+`make check-bridge` then runs the payer against a real node, anvil, with the vault
+deployed as on the devnet and the indexer crediting and settling
+([cmd/payer-e2e](../../cmd/payer-e2e/main.go)): a withdrawal paid once; a send that fails
+after the transaction was recorded, sent again with the same bytes; a payment
+`anvil_reorg` removed, paid again by the same transaction; two payers with one key
+paying six at once, nonces contiguous; a base fee raised far above what a sent
+transaction offers, the transaction replaced and only the replacement mined; a large
+withdrawal queued and paid with `executeQueued` after the delay. Once final every
+withdrawal is settled, every transaction closed, nothing is in suspense, and the
+ledger equals the vault on chain.
+
+## The service
+
+[cmd/withdrawal-payer](../../cmd/withdrawal-payer/main.go) runs the steps every two
+seconds, reads the vault from the deployment record at each, and signs with a key read
+from a file. It serves Prometheus metrics: what each step signed, sent again, replaced,
+left at the fee cap, rejected, reopened and closed; the withdrawals open and how long
+the oldest with nothing on chain has waited; the transactions open; what its key holds
+for gas. Its image ([Dockerfile](../../infra/images/withdrawal-payer/Dockerfile)) is
+built like the indexer's: pinned bases, no shell, an unprivileged user.
 
 ## Payments in suspense
 

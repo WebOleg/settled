@@ -85,7 +85,7 @@ contracts-slither-record: ## Record Slither's findings in contracts/slither.db.j
 check-go: ## gofmt, go vet and go test on every Go package; the ledger's tests against a throwaway PostgreSQL
 	@scripts/check-go.sh
 
-check-bridge: ## The deposit indexer end to end on anvil: held, credited at finality, voided by a reorg, credited once
+check-bridge: ## The deposit indexer and the withdrawal payer end to end on anvil: reorgs, crashes, two payers, a fee rise, suspense
 	@FOUNDRY_IMAGE=$(FOUNDRY_IMAGE) scripts/check-bridge.sh
 
 l1-up: ## Start the local L1; creates its genesis on first run
